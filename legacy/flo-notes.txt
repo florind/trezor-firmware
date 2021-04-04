@@ -1,0 +1,22 @@
+how to install ready bootloader 
+https://github.com/trezor/trezor-firmware/issues/1251#issuecomment-687701402
+build without bl
+https://github.com/trezor/trezor-firmware/issues/1427
+memory_protect combs:
+https://github.com/trezor/trezor-firmware/blob/master/docs/legacy/index.md
+
+build bootloader:
+export MEMORY_PROTECT=0
+cd legacy/vendor/libopencm3
+make
+cd ../../bootloader
+make
+
+see firmware_flash_t1.jlink to uploiad bootloader:
+device STM32F205RG
+if swd 
+speed 50000
+loadbin bootloader/bootloader.bin 0x0
+r
+g
+exit 

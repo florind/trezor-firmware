@@ -1,0 +1,63 @@
+Pt. 16mhz quartz:
+
+export MEMORY_PROTECT=0
+
+cd firmware;make clean;cd ../bootloader;make clean;cd ..;make clean;rm build/firmware/firmware.*;
+
+    git clone "$REPOSITORY" trezor-firmware
+    cd trezor-firmware/legacy
+    ln -s /build build
+    git checkout "$TAG"
+    git submodule update --init --recursive
+    poetry install
+
+vi vendor/libopencm3/include/libopencm3/stm32/f2/rcc.h
+add the folowing after extern const struct rcc_clock_scale rcc_hse_8mhz_3v3[RCC_CLOCK_3V3_END];
+
+extern const struct rcc_clock_scale rcc_hse_16mhz_3v3[RCC_CLOCK_3V3_END];
+
+---
+vi vendor/libopencm3/lib/stm32/f2/rcc.c
+add after def of rcc_hse_8mhz_3v3
+
+const struct rcc_clock_scale rcc_hse_16mhz_3v3[RCC_CLOCK_3V3_END] = {
+	{ /* 120MHz */
+		.pllm = 16,
+		.plln = 240,
+		.pllp = 2,
+		.pllq = 5,
+		.hpre = RCC_CFGR_HPRE_DIV_NONE,
+		.ppre1 = RCC_CFGR_PPRE_DIV_4,
+		.ppre2 = RCC_CFGR_PPRE_DIV_2,
+		.flash_config = FLASH_ACR_DCEN | FLASH_ACR_ICEN |
+				FLASH_ACR_LATENCY_3WS,
+		.apb1_frequency = 30000000,
+		.apb2_frequency = 60000000,
+	},
+};
+----
+
+curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v3.6.1/protoc-3.6.1-linux-x86_64.zip 
+unzip protoc-3.6.1-linux-x86_64.zip -d /tmp
+mv /tmp/include/google firmware/protob
+
+
+    poetry run script/cibuild
+    rm build
+    mkdir -p build/firmware
+    cp firmware/trezor.bin build/firmware/firmware.bin
+    cp firmware/trezor.elf build/firmware/firmware.elf
+    poetry run ../python/tools/firmware-fingerprint.py \
+               -o build/firmware/firmware.bin.fingerprint \
+               build/firmware/firmware.bin
+
+
+bootloader e build in bootloader/bootloader.bin. Burn with JLink:
+loadbin bootloader/bootloader.bin 0
+
+build firmware with export MEMORY_PROTECT=1
+
+trezorctl commands: https://wiki.trezor.io/Using_trezorctl_commands_with_Trezor
+
+
+JLink device STM32F205RG

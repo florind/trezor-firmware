@@ -63,7 +63,7 @@ void setup(void) {
   SCB_CCR |= SCB_CCR_STKALIGN;
 
   // setup clock
-  struct rcc_clock_scale clock = rcc_hse_8mhz_3v3[RCC_CLOCK_3V3_120MHZ];
+  struct rcc_clock_scale clock = rcc_hse_16mhz_3v3[RCC_CLOCK_3V3_120MHZ];
   rcc_clock_setup_hse_3v3(&clock);
 
   // enable GPIO clock - A (oled), B(oled), C (buttons)
