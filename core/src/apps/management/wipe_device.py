@@ -1,13 +1,17 @@
 import storage
 from trezor import ui
-from trezor.messages import ButtonRequestType
-from trezor.messages.Success import Success
+from trezor.enums import ButtonRequestType
+from trezor.messages import Success
 from trezor.ui.layouts import confirm_action
 
 from .apply_settings import reload_settings_from_storage
 
+if False:
+    from trezor import wire
+    from trezor.messages import WipeDevice
 
-async def wipe_device(ctx, msg):
+
+async def wipe_device(ctx: wire.GenericContext, msg: WipeDevice) -> Success:
     await confirm_action(
         ctx,
         "confirm_wipe",

@@ -1,20 +1,18 @@
 from trezor import wire
-from trezor.messages import InputScriptType
-from trezor.messages.HDNodeType import HDNodeType
-from trezor.messages.PublicKey import PublicKey
-from trezor.ui.layouts import show_xpub
+from trezor.enums import InputScriptType
+from trezor.messages import HDNodeType, PublicKey
 
-from apps.common import coins, paths
+from apps.common import coininfo, paths
 from apps.common.keychain import get_keychain
 
 if False:
-    from trezor.messages.GetPublicKey import GetPublicKey
+    from trezor.messages import GetPublicKey
 
 
 async def get_public_key(ctx: wire.Context, msg: GetPublicKey) -> PublicKey:
     coin_name = msg.coin_name or "Bitcoin"
     script_type = msg.script_type or InputScriptType.SPENDADDRESS
-    coin = coins.by_name(coin_name)
+    coin = coininfo.by_name(coin_name)
     curve_name = msg.ecdsa_curve_name or coin.curve_name
 
     keychain = await get_keychain(ctx, curve_name, [paths.AlwaysMatchingSchema])
@@ -59,6 +57,8 @@ async def get_public_key(ctx: wire.Context, msg: GetPublicKey) -> PublicKey:
     )
 
     if msg.show_display:
+        from trezor.ui.layouts import show_xpub
+
         await show_xpub(ctx, node_xpub, "XPUB", "Cancel")
 
     return PublicKey(

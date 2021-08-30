@@ -3,20 +3,15 @@ from trezor.crypto import bip32, hashlib, hmac
 
 from apps.common.keychain import Keychain
 from apps.common.readers import read_bitcoin_varint
-from apps.common.writers import (
-    empty_bytearray,
-    write_bitcoin_varint,
-    write_bytes_fixed,
-    write_uint8,
-)
+from apps.common.writers import write_bitcoin_varint, write_bytes_fixed, write_uint8
 
 from . import common
 from .scripts import read_bip322_signature_proof, write_bip322_signature_proof
 from .verification import SignatureVerifier
 
 if False:
-    from trezor.messages.MultisigRedeemScriptType import MultisigRedeemScriptType
-    from trezor.messages.TxInputType import EnumTypeInputScriptType
+    from trezor.enums import InputScriptType
+    from trezor.messages import MultisigRedeemScriptType
     from apps.common.coininfo import CoinInfo
 
 # This module implements the SLIP-0019 proof of ownership format, see
@@ -31,7 +26,7 @@ _OWNERSHIP_ID_KEY_PATH = [b"SLIP-0019", b"Ownership identification key"]
 
 def generate_proof(
     node: bip32.HDNode,
-    script_type: EnumTypeInputScriptType,
+    script_type: InputScriptType,
     multisig: MultisigRedeemScriptType | None,
     coin: CoinInfo,
     user_confirmed: bool,
@@ -43,7 +38,7 @@ def generate_proof(
     if user_confirmed:
         flags |= _FLAG_USER_CONFIRMED
 
-    proof = empty_bytearray(4 + 1 + 1 + len(ownership_ids) * _OWNERSHIP_ID_LEN)
+    proof = utils.empty_bytearray(4 + 1 + 1 + len(ownership_ids) * _OWNERSHIP_ID_LEN)
 
     write_bytes_fixed(proof, _VERSION_MAGIC, 4)
     write_uint8(proof, flags)
@@ -72,7 +67,7 @@ def verify_nonownership(
 ) -> bool:
     try:
         r = utils.BufferReader(proof)
-        if r.read(4) != _VERSION_MAGIC:
+        if r.read_memoryview(4) != _VERSION_MAGIC:
             raise wire.DataError("Unknown format of proof of ownership")
 
         flags = r.get()
@@ -84,7 +79,7 @@ def verify_nonownership(
         ownership_id = get_identifier(script_pubkey, keychain)
         not_owned = True
         for _ in range(id_count):
-            if utils.consteq(ownership_id, r.read(_OWNERSHIP_ID_LEN)):
+            if utils.consteq(ownership_id, r.read_memoryview(_OWNERSHIP_ID_LEN)):
                 not_owned = False
 
         # Verify the BIP-322 SignatureProof.

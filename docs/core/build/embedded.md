@@ -11,7 +11,7 @@ You will also need Python dependencies for signing.
 ### Debian/Ubuntu
 
 ```sh
-sudo apt-get install scons gcc-arm-none-eabi libnewlib-arm-none-eabi
+sudo apt-get install scons gcc-arm-none-eabi libnewlib-arm-none-eabi llvm-dev libclang-dev clang
 ```
 
 ### NixOS
@@ -33,6 +33,15 @@ For other users:
 2. Follow the [install instructions](https://launchpadlibrarian.net/287100883/readme.txt)
 3. To install OpenOCD, run `brew install open-ocd`
 4. Run `make vendor build_boardloader build_bootloader build_firmware`
+
+## Rust
+
+Install the appropriate target with [`rustup`](https://rustup.rs/):
+
+```sh
+rustup target add thumbv7em-none-eabihf  # for TT
+rustup target add thumbv7m-none-eabi     # for T1
+```
 
 ## Building
 
@@ -57,12 +66,14 @@ You can also build firmware in debug mode to see log output or run tests.
 PYOPT=0 make build_firmware
 ```
 
+To get a full debug build, use:
+
+```sh
+make build_firmware BITCOIN_ONLY=0 PYOPT=0
+```
+
 You can then use `screen` to enter the device's console. Do not forget to add your user to the `dialout` group or use `sudo`. Note that both the group and the tty name can differ, use `ls -l` to find out proper names on your machine.
 
 ```sh
 screen /dev/ttyACM0
 ```
-
-Debug console via serial port is enabled only for the Bitcoin-only firmware.
-If you need the console to debug non-Bitcoin features, please edit `src/usb.py`,
-disable WebAuthn USB interface and enable the VCP USB interface.

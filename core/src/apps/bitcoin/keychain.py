@@ -1,22 +1,24 @@
+import gc
+from micropython import const
+
 from trezor import wire
-from trezor.messages import InputScriptType as I
+from trezor.enums import InputScriptType
 
 from apps.common import coininfo
 from apps.common.keychain import get_keychain
 from apps.common.paths import PATTERN_BIP44, PathSchema
 
+from . import authorization
 from .common import BITCOIN_NAMES
 
 if False:
     from typing import Awaitable, Callable, Iterable, TypeVar
     from typing_extensions import Protocol
 
-    from trezor.messages.TxInputType import EnumTypeInputScriptType
+    from trezor.protobuf import MessageType
 
     from apps.common.keychain import Keychain, MsgOut, Handler
     from apps.common.paths import Bip32Path
-
-    from .authorization import CoinJoinAuthorization
 
     class MsgWithCoinName(Protocol):
         coin_name: str
@@ -24,7 +26,7 @@ if False:
     class MsgWithAddressScriptType(Protocol):
         # XXX should be Bip32Path but that fails
         address_n: list[int] = ...
-        script_type: EnumTypeInputScriptType = ...
+        script_type: InputScriptType = ...
 
     MsgIn = TypeVar("MsgIn", bound=MsgWithCoinName)
     HandlerWithCoinInfo = Callable[..., Awaitable[MsgOut]]
@@ -33,11 +35,12 @@ if False:
 # BIP-45 for multisig: https://github.com/bitcoin/bips/blob/master/bip-0045.mediawiki
 PATTERN_BIP45 = "m/45'/[0-100]/change/address_index"
 
-# Electrum Purpose48. See docs/misc/purpose48.md
-# Electrum does not seem to use the raw script type, it is included here for completeness.
-PATTERN_PURPOSE48_RAW = "m/48'/coin_type'/account'/0'/change/address_index"
-PATTERN_PURPOSE48_P2SHSEGWIT = "m/48'/coin_type'/account'/1'/change/address_index"
-PATTERN_PURPOSE48_SEGWIT = "m/48'/coin_type'/account'/2'/change/address_index"
+# BIP-48 for multisig: https://github.com/bitcoin/bips/blob/master/bip-0048.mediawiki
+# The raw script type is not part of the BIP (and Electrum, as a notable implementation,
+# does not use it), it is included here for completeness.
+PATTERN_BIP48_RAW = "m/48'/coin_type'/account'/0'/change/address_index"
+PATTERN_BIP48_P2SHSEGWIT = "m/48'/coin_type'/account'/1'/change/address_index"
+PATTERN_BIP48_SEGWIT = "m/48'/coin_type'/account'/2'/change/address_index"
 
 # BIP-49 for segwit-in-P2SH: https://github.com/bitcoin/bips/blob/master/bip-0049.mediawiki
 PATTERN_BIP49 = "m/49'/coin_type'/account'/change/address_index"
@@ -60,12 +63,18 @@ PATTERN_UNCHAINED_UNHARDENED = (
 )
 PATTERN_UNCHAINED_DEPRECATED = "m/45'/coin_type'/account'/[0-1000000]/address_index"
 
+# SLIP-44 coin type for Bitcoin
+SLIP44_BITCOIN = const(0)
+
+# SLIP-44 coin type for all Testnet coins
+SLIP44_TESTNET = const(1)
+
 
 def validate_path_against_script_type(
     coin: coininfo.CoinInfo,
     msg: MsgWithAddressScriptType | None = None,
     address_n: Bip32Path | None = None,
-    script_type: EnumTypeInputScriptType | None = None,
+    script_type: InputScriptType | None = None,
     multisig: bool = False,
 ) -> bool:
     patterns = []
@@ -73,47 +82,55 @@ def validate_path_against_script_type(
     if msg is not None:
         assert address_n is None and script_type is None
         address_n = msg.address_n
-        script_type = msg.script_type or I.SPENDADDRESS
+        script_type = msg.script_type or InputScriptType.SPENDADDRESS
         multisig = bool(getattr(msg, "multisig", False))
 
     else:
         assert address_n is not None and script_type is not None
 
-    if script_type == I.SPENDADDRESS and not multisig:
+    if script_type == InputScriptType.SPENDADDRESS and not multisig:
         patterns.append(PATTERN_BIP44)
-        if coin.coin_name in BITCOIN_NAMES:
+        if coin.slip44 == SLIP44_BITCOIN:
             patterns.append(PATTERN_GREENADDRESS_A)
             patterns.append(PATTERN_GREENADDRESS_B)
 
-    elif script_type in (I.SPENDADDRESS, I.SPENDMULTISIG) and multisig:
-        patterns.append(PATTERN_BIP45)
-        patterns.append(PATTERN_PURPOSE48_RAW)
-        if coin.coin_name in BITCOIN_NAMES:
+    elif (
+        script_type in (InputScriptType.SPENDADDRESS, InputScriptType.SPENDMULTISIG)
+        and multisig
+    ):
+        patterns.append(PATTERN_BIP48_RAW)
+        if coin.slip44 == SLIP44_BITCOIN or (
+            coin.fork_id is not None and coin.slip44 != SLIP44_TESTNET
+        ):
+            patterns.append(PATTERN_BIP45)
+        if coin.slip44 == SLIP44_BITCOIN:
             patterns.append(PATTERN_GREENADDRESS_A)
             patterns.append(PATTERN_GREENADDRESS_B)
+        if coin.coin_name in BITCOIN_NAMES:
             patterns.append(PATTERN_UNCHAINED_HARDENED)
             patterns.append(PATTERN_UNCHAINED_UNHARDENED)
             patterns.append(PATTERN_UNCHAINED_DEPRECATED)
 
-    elif coin.segwit and script_type == I.SPENDP2SHWITNESS:
+    elif coin.segwit and script_type == InputScriptType.SPENDP2SHWITNESS:
         patterns.append(PATTERN_BIP49)
         if multisig:
-            patterns.append(PATTERN_PURPOSE48_P2SHSEGWIT)
-        if coin.coin_name in BITCOIN_NAMES:
+            patterns.append(PATTERN_BIP48_P2SHSEGWIT)
+        if coin.slip44 == SLIP44_BITCOIN:
             patterns.append(PATTERN_GREENADDRESS_A)
             patterns.append(PATTERN_GREENADDRESS_B)
+        if coin.coin_name in BITCOIN_NAMES:
             patterns.append(PATTERN_CASA)
 
-    elif coin.segwit and script_type == I.SPENDWITNESS:
+    elif coin.segwit and script_type == InputScriptType.SPENDWITNESS:
         patterns.append(PATTERN_BIP84)
         if multisig:
-            patterns.append(PATTERN_PURPOSE48_SEGWIT)
-        if coin.coin_name in BITCOIN_NAMES:
+            patterns.append(PATTERN_BIP48_SEGWIT)
+        if coin.slip44 == SLIP44_BITCOIN:
             patterns.append(PATTERN_GREENADDRESS_A)
             patterns.append(PATTERN_GREENADDRESS_B)
 
     return any(
-        PathSchema(pattern, coin.slip44).match(address_n) for pattern in patterns
+        PathSchema.parse(pattern, coin.slip44).match(address_n) for pattern in patterns
     )
 
 
@@ -121,18 +138,29 @@ def get_schemas_for_coin(coin: coininfo.CoinInfo) -> Iterable[PathSchema]:
     # basic patterns
     patterns = [
         PATTERN_BIP44,
-        PATTERN_BIP45,
-        PATTERN_PURPOSE48_RAW,
+        PATTERN_BIP48_RAW,
     ]
 
-    # compatibility patterns
-    if coin.coin_name in BITCOIN_NAMES:
+    # patterns without coin_type field must be treated as if coin_type == 0
+    if coin.slip44 == SLIP44_BITCOIN or (
+        coin.fork_id is not None and coin.slip44 != SLIP44_TESTNET
+    ):
+        patterns.append(PATTERN_BIP45)
+
+    if coin.slip44 == SLIP44_BITCOIN:
         patterns.extend(
             (
                 PATTERN_GREENADDRESS_A,
                 PATTERN_GREENADDRESS_B,
                 PATTERN_GREENADDRESS_SIGN_A,
                 PATTERN_GREENADDRESS_SIGN_B,
+            )
+        )
+
+    # compatibility patterns
+    if coin.coin_name in BITCOIN_NAMES:
+        patterns.extend(
+            (
                 PATTERN_CASA,
                 PATTERN_UNCHAINED_HARDENED,
                 PATTERN_UNCHAINED_UNHARDENED,
@@ -146,20 +174,26 @@ def get_schemas_for_coin(coin: coininfo.CoinInfo) -> Iterable[PathSchema]:
             (
                 PATTERN_BIP49,
                 PATTERN_BIP84,
-                PATTERN_PURPOSE48_P2SHSEGWIT,
-                PATTERN_PURPOSE48_SEGWIT,
+                PATTERN_BIP48_P2SHSEGWIT,
+                PATTERN_BIP48_SEGWIT,
             )
         )
 
-    schemas = [PathSchema(pattern, coin.slip44) for pattern in patterns]
+    schemas = [PathSchema.parse(pattern, coin.slip44) for pattern in patterns]
 
-    # some wallets such as Electron-Cash (BCH) store coins on Bitcoin paths
-    # we can allow spending these coins from Bitcoin paths if the coin has
-    # implemented strong replay protection via SIGHASH_FORKID
-    if coin.fork_id is not None:
-        schemas.extend(PathSchema(pattern, 0) for pattern in patterns)
+    # Some wallets such as Electron-Cash (BCH) store coins on Bitcoin paths.
+    # We can allow spending these coins from Bitcoin paths if the coin has
+    # implemented strong replay protection via SIGHASH_FORKID. However, we
+    # cannot allow spending any testnet coins from Bitcoin paths, because
+    # otherwise an attacker could trick the user into spending BCH on a Bitcoin
+    # path by signing a seemingly harmless BCH Testnet transaction.
+    if coin.fork_id is not None and coin.slip44 != SLIP44_TESTNET:
+        schemas.extend(
+            PathSchema.parse(pattern, SLIP44_BITCOIN) for pattern in patterns
+        )
 
-    return schemas
+    gc.collect()
+    return [schema.copy() for schema in schemas]
 
 
 def get_coin_by_name(coin_name: str | None) -> coininfo.CoinInfo:
@@ -186,14 +220,13 @@ def with_keychain(func: HandlerWithCoinInfo[MsgOut]) -> Handler[MsgIn, MsgOut]:
     async def wrapper(
         ctx: wire.Context,
         msg: MsgIn,
-        authorization: CoinJoinAuthorization | None = None,
+        auth_msg: MessageType | None = None,
     ) -> MsgOut:
-        if authorization:
-            keychain = authorization.keychain
-            coin = get_coin_by_name(msg.coin_name)
-            return await func(ctx, msg, keychain, coin, authorization)
+        keychain, coin = await get_keychain_for_coin(ctx, msg.coin_name)
+        if auth_msg:
+            auth_obj = authorization.from_cached_message(auth_msg)
+            return await func(ctx, msg, keychain, coin, auth_obj)
         else:
-            keychain, coin = await get_keychain_for_coin(ctx, msg.coin_name)
             with keychain:
                 return await func(ctx, msg, keychain, coin)
 

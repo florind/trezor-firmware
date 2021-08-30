@@ -183,12 +183,23 @@ void fsm_msgGetAddress(const GetAddress *msg) {
       strlcpy(desc, _("Address:"), sizeof(desc));
     }
 
-    if (!coin_known_path_check(coin, msg->script_type, msg->address_n_count,
-                               msg->address_n, true)) {
+    if (!coin_path_check(coin, msg->script_type, msg->address_n_count,
+                         msg->address_n, msg->has_multisig,
+                         CoinPathCheckLevel_SCRIPT_TYPE)) {
+      if (config_getSafetyCheckLevel() == SafetyCheckLevel_Strict &&
+          !coin_path_check(coin, msg->script_type, msg->address_n_count,
+                           msg->address_n, msg->has_multisig,
+                           CoinPathCheckLevel_KNOWN)) {
+        fsm_sendFailure(FailureType_Failure_DataError, _("Forbidden key path"));
+        layoutHome();
+        return;
+      }
+
       layoutDialogSwipe(&bmp_icon_warning, _("Abort"), _("Continue"), NULL,
                         _("Wrong address path"), _("for selected coin."), NULL,
                         _("Continue at your"), _("own risk!"), NULL);
-      if (!protectButton(ButtonRequestType_ButtonRequest_Other, false)) {
+      if (!protectButton(ButtonRequestType_ButtonRequest_UnknownDerivationPath,
+                         false)) {
         fsm_sendFailure(FailureType_Failure_ActionCancelled, NULL);
         layoutHome();
         return;

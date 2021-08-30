@@ -4,26 +4,56 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## 2.4.0 [unreleased]
+## 2.4.1 [14th July 2021]
 
 ### Added
-- Locking the device by holding finger on the homescreen for 2.5 seconds.  [#1404]
-- Public key to ECDHSessionKey.  [#1518]
-- Decred staking.  [#1249]
+- ButtonRequest for multi-page views contains number of pages.  [#1671]
 
 ### Changed
+- Converted altcoin apps to common layout code.  [#1538]
+- Reimplement protobuf codec and library in Rust  [#1541]
+- Cardano: Reintroduce maximum transaction output size limitation  [#1606]
+- Cardano: Improve address validation and decouple it from address derivation  [#1606]
+- Cardano: Remove sorting of policies, assets and withdrawals. Rather add them to the transaction in the order they arrived in.  [#1672]
+- Cardano: Forbid withdrawals with the same path in a single transaction  [#1672]
+
+### Removed
+- Removed support for Firo  [#1647]
+- Removed support for Hatch  [#1650]
+
+### Fixed
+- Unify Features.revision reporting with legacy  [#1620]
+- Fix red screen on shutdown.  [#1658]
+- Empty passphrase is properly cached in Cardano functions  [#1659]
+
+### Security
+- Ensure that all testnet coins use SLIP-44 coin type 1.
+- Disable all testnet coins from accessing Bitcoin paths.
+- Restrict BIP-45 paths to Bitcoin and coins with strong replay protection.
+- Fix operation source account encoding in Stellar.
+
+
+## 2.4.0 [9th June 2021]
+
+### Added
+- Decred staking.  [#1249]
+- Locking the device by holding finger on the homescreen for 2.5 seconds.  [#1404]
+- Public key to ECDHSessionKey.  [#1518]
+- Rust FFI for MicroPython.  [#1540]
+
+### Changed
+- Support PIN of unlimited length.  [#1167]
 - Allow decreasing the output value in RBF transactions.  [#1491]
 - Cardano: Allow stake pool registrations with zero margin.  [#1502]
 - Cardano: Assets are now shown as CIP-0014.  [#1510]
-- Support PIN of unlimited length.  [#1167]
-
-### Deprecated
-
-### Removed
+- Random delays use ChaCha-based DRBG instead of HMAC-DRBG.  [#1554]
+- Reduce memory fragmentation by clearing memory after every workflow.  [#1565]
+- Update some FIDO icons.  [#1456]
 
 ### Fixed
+- Import errors on T1 startup.  [#24]
+- Improve wording when showing multisig XPUBs.  [#1431]
 
-### Security
 
 ## 2.3.6 [15th February 2021]
 
@@ -334,6 +364,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - First public release.
 
+[#24]: https://github.com/trezor/trezor-firmware/issues/24
 [#379]: https://github.com/trezor/trezor-firmware/issues/379
 [#800]: https://github.com/trezor/trezor-firmware/issues/800
 [#948]: https://github.com/trezor/trezor-firmware/issues/948
@@ -380,8 +411,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 [#1402]: https://github.com/trezor/trezor-firmware/pull/1402
 [#1404]: https://github.com/trezor/trezor-firmware/issues/1404
 [#1415]: https://github.com/trezor/trezor-firmware/pull/1415
+[#1431]: https://github.com/trezor/trezor-firmware/pull/1431
+[#1456]: https://github.com/trezor/trezor-firmware/pull/1456
 [#1467]: https://github.com/trezor/trezor-firmware/issues/1467
 [#1491]: https://github.com/trezor/trezor-firmware/issues/1491
 [#1502]: https://github.com/trezor/trezor-firmware/issues/1502
 [#1510]: https://github.com/trezor/trezor-firmware/issues/1510
-[#1518]: https://github.com/trezor/trezor-firmware/pull/1518
+[#1518]: https://github.com/trezor/trezor-firmware/issues/1518
+[#1538]: https://github.com/trezor/trezor-firmware/issues/1538
+[#1540]: https://github.com/trezor/trezor-firmware/issues/1540
+[#1541]: https://github.com/trezor/trezor-firmware/issues/1541
+[#1554]: https://github.com/trezor/trezor-firmware/issues/1554
+[#1565]: https://github.com/trezor/trezor-firmware/issues/1565
+[#1606]: https://github.com/trezor/trezor-firmware/issues/1606
+[#1620]: https://github.com/trezor/trezor-firmware/issues/1620
+[#1647]: https://github.com/trezor/trezor-firmware/issues/1647
+[#1650]: https://github.com/trezor/trezor-firmware/issues/1650
+[#1658]: https://github.com/trezor/trezor-firmware/issues/1658
+[#1659]: https://github.com/trezor/trezor-firmware/issues/1659
+[#1671]: https://github.com/trezor/trezor-firmware/issues/1671
+[#1672]: https://github.com/trezor/trezor-firmware/issues/1672

@@ -37,7 +37,7 @@ PASSPHRASE_TEST_PATH = tools.parse_path("44h/1h/0h/0/0")
 OUTDATED_FIRMWARE_ERROR = """
 Your Trezor firmware is out of date. Update it with the following command:
   trezorctl firmware-update
-Or visit https://wallet.trezor.io/
+Or visit https://suite.trezor.io/
 """.strip()
 
 
@@ -209,7 +209,7 @@ class TrezorClient:
         __tracebackhide__ = True  # for pytest # pylint: disable=W0612
         # do this raw - send ButtonAck first, notify UI later
         self._raw_write(messages.ButtonAck())
-        self.ui.button_request(msg.code)
+        self.ui.button_request(msg)
         return self._raw_read()
 
     @tools.session

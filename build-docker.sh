@@ -18,12 +18,46 @@ if [ -z "$ALPINE_ARCH" ]; then
   esac
 fi
 
+if [ -z "$ALPINE_CHECKSUM" ]; then
+  case "$ALPINE_ARCH" in
+    aarch64)
+      ALPINE_CHECKSUM="bc541e148463b3dde10fdbb1af8eac4e34706eae8883c6d126263db07a9a9c42"
+      ;;
+    x86_64)
+      ALPINE_CHECKSUM="bcdf5a4e58637b9228f8e474547a3de9ea02a05a5fa68a2495b0657ada7e65f6"
+      ;;
+    *)
+      exit
+  esac
+ fi
+
+
 CONTAINER_NAME=${CONTAINER_NAME:-trezor-firmware-env.nix}
-ALPINE_CDN=${ALPINE_CDN:-http://dl-cdn.alpinelinux.org/alpine}
-ALPINE_RELEASE=${ALPINE_RELEASE:-3.13}
-ALPINE_VERSION=${ALPINE_VERSION:-3.13.2}
+ALPINE_CDN=${ALPINE_CDN:-https://dl-cdn.alpinelinux.org/alpine}
+ALPINE_RELEASE=${ALPINE_RELEASE:-3.14}
+ALPINE_VERSION=${ALPINE_VERSION:-3.14.0}
 ALPINE_TARBALL=${ALPINE_FILE:-alpine-minirootfs-$ALPINE_VERSION-$ALPINE_ARCH.tar.gz}
+NIX_VERSION=${NIX_VERSION:-2.3.14}
 CONTAINER_FS_URL=${CONTAINER_FS_URL:-"$ALPINE_CDN/v$ALPINE_RELEASE/releases/$ALPINE_ARCH/$ALPINE_TARBALL"}
+
+VARIANTS_core=(0 1)
+VARIANTS_legacy=(0 1)
+
+if [ "$1" == "--skip-core" ]; then
+  VARIANTS_core=()
+  shift
+fi
+
+if [ "$1" == "--skip-legacy" ]; then
+  VARIANTS_legacy=()
+  shift
+fi
+
+if [ "$1" == "--skip-bitcoinonly" ]; then
+  VARIANTS_core=(0)
+  VARIANTS_legacy=(0)
+  shift
+fi
 
 TAG=${1:-master}
 REPOSITORY=${2:-/local}
@@ -39,7 +73,14 @@ else
   fi
 fi
 
-docker build --build-arg ALPINE_VERSION="$ALPINE_VERSION" --build-arg ALPINE_ARCH="$ALPINE_ARCH" -t "$CONTAINER_NAME" ci/
+# check alpine checksum
+if command -v sha256sum &> /dev/null ; then
+    echo "${ALPINE_CHECKSUM}  ci/${ALPINE_TARBALL}" | sha256sum -c
+else
+    echo "${ALPINE_CHECKSUM}  ci/${ALPINE_TARBALL}" | shasum -a 256 -c
+fi
+
+docker build --build-arg ALPINE_VERSION="$ALPINE_VERSION" --build-arg ALPINE_ARCH="$ALPINE_ARCH" --build-arg NIX_VERSION="$NIX_VERSION" -t "$CONTAINER_NAME" ci/
 
 # stat under macOS has slightly different cli interface
 USER=$(stat -c "%u" . 2>/dev/null || stat -f "%u" .)
@@ -52,7 +93,7 @@ DIR=$(pwd)
 
 # build core
 
-for BITCOIN_ONLY in 0 1; do
+for BITCOIN_ONLY in ${VARIANTS_core[@]}; do
 
   DIRSUFFIX=${BITCOIN_ONLY/1/-bitcoinonly}
   DIRSUFFIX=${DIRSUFFIX/0/}
@@ -89,7 +130,7 @@ done
 
 # build legacy
 
-for BITCOIN_ONLY in 0 1; do
+for BITCOIN_ONLY in ${VARIANTS_legacy[@]}; do
 
   DIRSUFFIX=${BITCOIN_ONLY/1/-bitcoinonly}
   DIRSUFFIX=${DIRSUFFIX/0/}
@@ -108,7 +149,9 @@ for BITCOIN_ONLY in 0 1; do
     git submodule update --init --recursive
     poetry install
     poetry run script/cibuild
-    mkdir -p build/firmware
+    mkdir -p build/bootloader build/firmware build/intermediate_fw
+    cp bootloader/bootloader.bin build/bootloader/bootloader.bin
+    cp intermediate_fw/trezor.bin build/intermediate_fw/inter.bin
     cp firmware/trezor.bin build/firmware/firmware.bin
     cp firmware/trezor.elf build/firmware/firmware.elf
     poetry run ../python/tools/firmware-fingerprint.py \
@@ -132,7 +175,10 @@ done
 
 echo "Fingerprints:"
 for VARIANT in core legacy; do
-  for BITCOIN_ONLY in 0 1; do
+
+  VARIANTS="VARIANTS_$VARIANT[@]"
+
+  for BITCOIN_ONLY in ${!VARIANTS}; do
 
     DIRSUFFIX=${BITCOIN_ONLY/1/-bitcoinonly}
     DIRSUFFIX=${DIRSUFFIX/0/}

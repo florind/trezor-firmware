@@ -1,17 +1,21 @@
 from micropython import const
 from ubinascii import hexlify
 
-from trezor.messages import AmountUnit, ButtonRequestType, OutputScriptType
+from trezor import utils
+from trezor.enums import AmountUnit, ButtonRequestType, OutputScriptType
 from trezor.strings import format_amount
 from trezor.ui import layouts
 
 from .. import addresses
 from . import omni
 
+if not utils.BITCOIN_ONLY:
+    from trezor.ui.layouts.tt import altcoin
+
+
 if False:
     from trezor import wire
-    from trezor.messages.SignTx import EnumTypeAmountUnit
-    from trezor.messages.TxOutput import TxOutput
+    from trezor.messages import TxOutput
     from trezor.ui.layouts import LayoutType
 
     from apps.common.coininfo import CoinInfo
@@ -19,9 +23,7 @@ if False:
 _LOCKTIME_TIMESTAMP_MIN_VALUE = const(500_000_000)
 
 
-def format_coin_amount(
-    amount: int, coin: CoinInfo, amount_unit: EnumTypeAmountUnit
-) -> str:
+def format_coin_amount(amount: int, coin: CoinInfo, amount_unit: AmountUnit) -> str:
     decimals, shortcut = coin.decimals, coin.coin_shortcut
     if amount_unit == AmountUnit.SATOSHI:
         decimals = 0
@@ -37,7 +39,7 @@ def format_coin_amount(
 
 
 async def confirm_output(
-    ctx: wire.Context, output: TxOutput, coin: CoinInfo, amount_unit: EnumTypeAmountUnit
+    ctx: wire.Context, output: TxOutput, coin: CoinInfo, amount_unit: AmountUnit
 ) -> None:
     if output.script_type == OutputScriptType.PAYTOOPRETURN:
         data = output.op_return_data
@@ -53,11 +55,11 @@ async def confirm_output(
             )
         else:
             # generic OP_RETURN
-            layout = layouts.confirm_hex(
+            layout = layouts.confirm_blob(
                 ctx,
                 "op_return",
                 title="OP_RETURN",
-                data=hexlify(data).decode(),
+                data=data,
                 br_code=ButtonRequestType.ConfirmOutput,
             )
     else:
@@ -71,12 +73,12 @@ async def confirm_output(
 
 
 async def confirm_decred_sstx_submission(
-    ctx: wire.Context, output: TxOutput, coin: CoinInfo, amount_unit: EnumTypeAmountUnit
+    ctx: wire.Context, output: TxOutput, coin: CoinInfo, amount_unit: AmountUnit
 ) -> None:
     assert output.address is not None
     address_short = addresses.address_short(coin, output.address)
 
-    await layouts.confirm_decred_sstx_submission(
+    await altcoin.confirm_decred_sstx_submission(
         ctx, address_short, format_coin_amount(output.amount, coin, amount_unit)
     )
 
@@ -94,7 +96,7 @@ async def confirm_modify_output(
     txo: TxOutput,
     orig_txo: TxOutput,
     coin: CoinInfo,
-    amount_unit: EnumTypeAmountUnit,
+    amount_unit: AmountUnit,
 ) -> None:
     assert txo.address is not None
     address_short = addresses.address_short(coin, txo.address)
@@ -113,7 +115,7 @@ async def confirm_modify_fee(
     user_fee_change: int,
     total_fee_new: int,
     coin: CoinInfo,
-    amount_unit: EnumTypeAmountUnit,
+    amount_unit: AmountUnit,
 ) -> None:
     await layouts.confirm_modify_fee(
         ctx,
@@ -128,7 +130,7 @@ async def confirm_joint_total(
     spending: int,
     total: int,
     coin: CoinInfo,
-    amount_unit: EnumTypeAmountUnit,
+    amount_unit: AmountUnit,
 ) -> None:
     await layouts.confirm_joint_total(
         ctx,
@@ -142,7 +144,7 @@ async def confirm_total(
     spending: int,
     fee: int,
     coin: CoinInfo,
-    amount_unit: EnumTypeAmountUnit,
+    amount_unit: AmountUnit,
 ) -> None:
     await layouts.confirm_total(
         ctx,
@@ -152,7 +154,7 @@ async def confirm_total(
 
 
 async def confirm_feeoverthreshold(
-    ctx: wire.Context, fee: int, coin: CoinInfo, amount_unit: EnumTypeAmountUnit
+    ctx: wire.Context, fee: int, coin: CoinInfo, amount_unit: AmountUnit
 ) -> None:
     fee_amount = format_coin_amount(fee, coin, amount_unit)
     await layouts.confirm_metadata(

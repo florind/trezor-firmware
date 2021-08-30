@@ -779,10 +779,14 @@ void layoutAddress(const char *address, const char *desc, bool qrcode,
       oledDrawString(0, 0 * 9, desc, FONT_STANDARD);
     }
     if (addrlen > 10) {  // don't split short addresses
-      uint32_t rowlen = (addrlen - 1) / (addrlen <= 42   ? 2
-                                         : addrlen <= 63 ? 3
-                                                         : 4) +
-                        1;
+      uint32_t rowcount = 4;
+      if (addrlen <= 42) {
+        rowcount = 2;
+      } else if (addrlen <= 63) {
+        rowcount = 3;
+      }
+
+      uint32_t rowlen = (addrlen - 1) / rowcount + 1;
       const char **str =
           split_message((const uint8_t *)address, addrlen, rowlen);
       for (int i = 0; i < 4; i++) {
@@ -1244,4 +1248,19 @@ void layoutConfirmAutoLockDelay(uint32_t delay_ms) {
   layoutDialogSwipe(&bmp_icon_question, _("Cancel"), _("Confirm"), NULL,
                     _("Do you really want to"), _("auto-lock your device"),
                     line, NULL, NULL, NULL);
+}
+
+void layoutConfirmSafetyChecks(SafetyCheckLevel safety_ckeck_level) {
+  if (safety_ckeck_level == SafetyCheckLevel_Strict) {
+    // Disallow unsafe actions. This is the default.
+    layoutDialogSwipe(&bmp_icon_question, _("Cancel"), _("Confirm"), NULL,
+                      _("Do you really want to"), _("enforce strict safety"),
+                      _("checks?"), _("(Recommended.)"), NULL, NULL);
+  } else if (safety_ckeck_level == SafetyCheckLevel_PromptTemporarily) {
+    // Ask user before unsafe action. Reverts to Strict after reboot.
+    layoutDialogSwipe(&bmp_icon_question, _("Cancel"), _("Confirm"), NULL,
+                      _("Do you really want to"), _("be temporarily able"),
+                      _("to approve some"), _("actions which might"),
+                      _("be unsafe?"), NULL);
+  }
 }

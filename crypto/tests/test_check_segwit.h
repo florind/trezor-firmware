@@ -2,18 +2,22 @@
 
 static const char* valid_checksum[] = {
     "A12UEL5L",
+    "a12uel5l",
     "an83characterlonghumanreadablepartthatcontainsthenumber1andtheexcludedchar"
     "actersbio1tt5tgs",
     "abcdef1qpzry9x8gf2tvdw0s3jn54khce6mua7lmqqqxw",
     "11qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
     "qqqqqqqqqqc8247j",
     "split1checkupstagehandshakeupstreamerranterredcaperred2y9e3w",
+    "?1ezyfcl",
 };
 
 static const char* invalid_checksum[] = {
     " 1nwldj5",
     "\x7f"
     "1axkwrx",
+    "\x80"
+    "1eym55h"
     "an84characterslonghumanreadablepartthatcontainsthenumber1andtheexcludedcha"
     "ractersbio1569pvx",
     "pzry9x0s0muk",
@@ -21,6 +25,9 @@ static const char* invalid_checksum[] = {
     "x1b4n0q5v",
     "li1dgmt3",
     "de1lg7wt\xff",
+    "A1G7SGD8",
+    "10a06t8",
+    "1qzzfhee",
 };
 
 struct valid_address_data {
@@ -128,7 +135,7 @@ START_TEST(test_segwit) {
     ck_assert_int_eq(ret, 1);
     segwit_scriptpubkey(scriptpubkey, &scriptpubkey_len, witver, witprog,
                         witprog_len);
-    ck_assert_int_eq(scriptpubkey_len, valid_address[i].scriptPubKeyLen);
+    ck_assert_uint_eq(scriptpubkey_len, valid_address[i].scriptPubKeyLen);
     ck_assert_int_eq(
         memcmp(scriptpubkey, valid_address[i].scriptPubKey, scriptpubkey_len),
         0);

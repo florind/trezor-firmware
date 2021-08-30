@@ -1,8 +1,5 @@
 from trezor.crypto.hashlib import sha256
-from trezor.messages.PrevTx import PrevTx
-from trezor.messages.SignTx import SignTx
-from trezor.messages.TxInput import TxInput
-from trezor.messages.TxOutput import TxOutput
+from trezor.messages import PrevTx, SignTx, TxInput, TxOutput
 from trezor.utils import HashWriter
 
 from apps.common import coininfo
@@ -10,7 +7,7 @@ from apps.common import coininfo
 from .. import scripts, writers
 
 if False:
-    from typing import Protocol
+    from typing import Protocol, Sequence
 
     class Hash143(Protocol):
         def add_input(self, txi: TxInput) -> None:
@@ -22,7 +19,7 @@ if False:
         def preimage_hash(
             self,
             txi: TxInput,
-            public_keys: list[bytes],
+            public_keys: Sequence[bytes | memoryview],
             threshold: int,
             tx: SignTx | PrevTx,
             coin: coininfo.CoinInfo,
@@ -51,7 +48,7 @@ class Bip143Hash:
     def preimage_hash(
         self,
         txi: TxInput,
-        public_keys: list[bytes],
+        public_keys: Sequence[bytes | memoryview],
         threshold: int,
         tx: SignTx | PrevTx,
         coin: coininfo.CoinInfo,
@@ -79,10 +76,9 @@ class Bip143Hash:
         writers.write_uint32(h_preimage, txi.prev_index)
 
         # scriptCode
-        script_code = scripts.bip143_derive_script_code(
-            txi, public_keys, threshold, coin
+        scripts.write_bip143_script_code_prefixed(
+            h_preimage, txi, public_keys, threshold, coin
         )
-        writers.write_bytes_prefixed(h_preimage, script_code)
 
         # amount
         writers.write_uint64(h_preimage, txi.amount)

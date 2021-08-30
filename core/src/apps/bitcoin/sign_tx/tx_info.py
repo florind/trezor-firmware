@@ -10,12 +10,12 @@ from .matchcheck import MultisigFingerprintChecker, WalletPathChecker
 
 if False:
     from typing import Protocol
-    from trezor.messages.SignTx import SignTx
-    from trezor.messages.PrevTx import PrevTx
-    from trezor.messages.TxInput import TxInput
-    from trezor.messages.TxOutput import TxOutput
-    from trezor.messages.PrevInput import PrevInput
-    from trezor.messages.PrevOutput import PrevOutput
+    from trezor.messages import (
+        PrevTx,
+        SignTx,
+        TxInput,
+        TxOutput,
+    )
     from .hash143 import Hash143
 
     from apps.common.coininfo import CoinInfo
@@ -34,22 +34,6 @@ if False:
             w: writers.Writer,
             tx: SignTx | PrevTx,
             witness_marker: bool,
-        ) -> None:
-            ...
-
-        @staticmethod
-        def write_tx_input(
-            w: writers.Writer,
-            txi: TxInput | PrevInput,
-            script: bytes,
-        ) -> None:
-            ...
-
-        @staticmethod
-        def write_tx_output(
-            w: writers.Writer,
-            txo: TxOutput | PrevOutput,
-            script_pubkey: bytes,
         ) -> None:
             ...
 
@@ -165,7 +149,7 @@ class OriginalTxInfo(TxInfoBase):
 
     def add_input(self, txi: TxInput) -> None:
         super().add_input(txi)
-        self.signer.write_tx_input(self.h_tx, txi, txi.script_sig or bytes())
+        writers.write_tx_input(self.h_tx, txi, txi.script_sig or bytes())
 
         # For verification use the first original input that specifies address_n.
         if not self.verification_input and txi.address_n:
@@ -178,7 +162,7 @@ class OriginalTxInfo(TxInfoBase):
         if self.index == 0:
             writers.write_bitcoin_varint(self.h_tx, self.tx.outputs_count)
 
-        self.signer.write_tx_output(self.h_tx, txo, script_pubkey)
+        writers.write_tx_output(self.h_tx, txo, script_pubkey)
 
     async def finalize_tx_hash(self) -> None:
         await self.signer.write_prev_tx_footer(self.h_tx, self.tx, self.orig_hash)

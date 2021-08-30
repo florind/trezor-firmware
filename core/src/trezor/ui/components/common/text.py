@@ -3,6 +3,7 @@ from micropython import const
 from trezor import ui
 
 from ...constants import (
+    PAGINATION_MARGIN_RIGHT,
     TEXT_HEADER_HEIGHT,
     TEXT_LINE_HEIGHT,
     TEXT_LINE_HEIGHT_HALF,
@@ -10,8 +11,11 @@ from ...constants import (
     TEXT_MAX_LINES,
 )
 
+LINE_WIDTH = ui.WIDTH - TEXT_MARGIN_LEFT
+LINE_WIDTH_PAGINATED = LINE_WIDTH - PAGINATION_MARGIN_RIGHT
+
 if False:
-    from typing import Any, Union
+    from typing import Any, Sequence, Union
 
     TextContent = Union[str, int]
 
@@ -30,7 +34,7 @@ class Span:
         string: str = "",
         start: int = 0,
         font: int = ui.NORMAL,
-        line_width: int = ui.WIDTH - TEXT_MARGIN_LEFT,
+        line_width: int = LINE_WIDTH,
         offset_x: int = 0,
         break_words: bool = False,
     ) -> None:
@@ -41,7 +45,7 @@ class Span:
         string: str,
         start: int,
         font: int,
-        line_width: int = ui.WIDTH - TEXT_MARGIN_LEFT,
+        line_width: int = LINE_WIDTH,
         offset_x: int = 0,
         break_words: bool = False,
     ) -> None:
@@ -172,7 +176,7 @@ _WORKING_SPAN = Span()
 
 
 def render_text(
-    items: list[TextContent],
+    items: Sequence[TextContent],
     new_lines: bool,
     max_lines: int,
     font: int = ui.NORMAL,
@@ -206,11 +210,11 @@ def render_text(
     if false, the trailing "..." is not shown. This is useful when the rendered text is
     in fact paginated.
 
-    `font` specifies the default font, but that can be overriden by font instructions
+    `font` specifies the default font, but that can be overridden by font instructions
     in `items`.
-    `fg` specifies default foreground color, which can also be overriden by instructions
+    `fg` specifies default foreground color, which can also be overridden by instructions
     in `items`.
-    `bg` specifies background color. This cannot be overriden.
+    `bg` specifies background color. This cannot be overridden.
 
     `offset_x` and `offset_y` specify starting XY position of the text bounding box.
     `line_width` specifies width of the bounding box. Height of the bounding box is

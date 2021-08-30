@@ -2,10 +2,8 @@ import storage
 import storage.device
 from trezor import config, wire
 from trezor.crypto import bip39, hashlib, random, slip39
-from trezor.messages import BackupType
-from trezor.messages.EntropyAck import EntropyAck
-from trezor.messages.EntropyRequest import EntropyRequest
-from trezor.messages.Success import Success
+from trezor.enums import BackupType
+from trezor.messages import EntropyAck, EntropyRequest, Success
 from trezor.ui.layouts import confirm_backup, confirm_reset_device
 from trezor.ui.loader import LoadingAnimation
 
@@ -14,10 +12,10 @@ from ..change_pin import request_pin_confirm
 from . import layout
 
 if __debug__:
-    from apps import debug
+    import storage.debug
 
 if False:
-    from trezor.messages.ResetDevice import ResetDevice
+    from trezor.messages import ResetDevice
 
 _DEFAULT_BACKUP_TYPE = BackupType.Bip39
 
@@ -48,7 +46,7 @@ async def reset_device(ctx: wire.Context, msg: ResetDevice) -> Success:
     # generate and display internal entropy
     int_entropy = random.bytes(32)
     if __debug__:
-        debug.reset_internal_entropy = int_entropy
+        storage.debug.reset_internal_entropy = int_entropy
     if msg.display_random:
         await layout.show_internal_entropy(ctx, int_entropy)
 
@@ -90,7 +88,7 @@ async def reset_device(ctx: wire.Context, msg: ResetDevice) -> Success:
         secret,  # for SLIP-39, this is the EMS
         msg.backup_type,
         needs_backup=not perform_backup,
-        no_backup=msg.no_backup,
+        no_backup=bool(msg.no_backup),
     )
 
     # if we backed up the wallet, show success message
@@ -111,12 +109,17 @@ async def backup_slip39_basic(
     await layout.slip39_show_checklist(ctx, 1, BackupType.Slip39_Basic)
     threshold = await layout.slip39_prompt_threshold(ctx, shares_count)
 
+    identifier = storage.device.get_slip39_identifier()
+    iteration_exponent = storage.device.get_slip39_iteration_exponent()
+    if identifier is None or iteration_exponent is None:
+        raise ValueError
+
     # generate the mnemonics
     mnemonics = slip39.split_ems(
         1,  # Single Group threshold
         [(threshold, shares_count)],  # Single Group threshold/count
-        storage.device.get_slip39_identifier(),
-        storage.device.get_slip39_iteration_exponent(),
+        identifier,
+        iteration_exponent,
         encrypted_master_secret,
     )[0]
 
@@ -146,12 +149,17 @@ async def backup_slip39_advanced(
         share_threshold = await layout.slip39_prompt_threshold(ctx, share_count, i)
         groups.append((share_threshold, share_count))
 
+    identifier = storage.device.get_slip39_identifier()
+    iteration_exponent = storage.device.get_slip39_iteration_exponent()
+    if identifier is None or iteration_exponent is None:
+        raise ValueError
+
     # generate the mnemonics
     mnemonics = slip39.split_ems(
         group_threshold=group_threshold,
         groups=groups,
-        identifier=storage.device.get_slip39_identifier(),
-        iteration_exponent=storage.device.get_slip39_iteration_exponent(),
+        identifier=identifier,
+        iteration_exponent=iteration_exponent,
         encrypted_master_secret=encrypted_master_secret,
     )
 
@@ -195,7 +203,7 @@ def _compute_secret_from_entropy(
 
 async def backup_seed(
     ctx: wire.Context, backup_type: BackupType, mnemonic_secret: bytes
-):
+) -> None:
     if backup_type == BackupType.Slip39_Basic:
         await backup_slip39_basic(ctx, mnemonic_secret)
     elif backup_type == BackupType.Slip39_Advanced:

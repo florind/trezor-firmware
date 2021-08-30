@@ -1,8 +1,12 @@
 from trezor.crypto import hashlib
 
 from apps.cardano.helpers.paths import ACCOUNT_PATH_INDEX, unharden
+from apps.common.seed import remove_ed25519_prefix
 
 from . import bech32
+
+if False:
+    from .. import seed
 
 
 def variable_length_encode(number: int) -> bytes:
@@ -14,17 +18,12 @@ def variable_length_encode(number: int) -> bytes:
     if number < 0:
         raise ValueError("Negative numbers not supported. Number supplied: %s" % number)
 
-    encoded = []
-
-    bit_length = len(bin(number)[2:])
-    encoded.append(number & 127)
-
-    while bit_length > 7:
+    encoded = [number & 0x7F]
+    while number > 0x7F:
         number >>= 7
-        bit_length -= 7
-        encoded.insert(0, (number & 127) + 128)
+        encoded.append((number & 0x7F) + 0x80)
 
-    return bytes(encoded)
+    return bytes(reversed(encoded))
 
 
 def to_account_path(path: list[int]) -> list[int]:
@@ -58,3 +57,11 @@ def format_asset_fingerprint(policy_id: bytes, asset_name_bytes: bytes) -> str:
     ).digest()
 
     return bech32.encode("asset", fingerprint)
+
+
+def derive_public_key(
+    keychain: seed.Keychain, path: list[int], extended: bool = False
+) -> bytes:
+    node = keychain.derive(path)
+    public_key = remove_ed25519_prefix(node.public_key())
+    return public_key if not extended else public_key + node.chain_code()

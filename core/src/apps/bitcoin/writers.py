@@ -4,7 +4,6 @@ from trezor.crypto.hashlib import sha256
 from trezor.utils import ensure
 
 from apps.common.writers import (  # noqa: F401
-    empty_bytearray,
     write_bitcoin_varint,
     write_bytes_fixed,
     write_bytes_reversed,
@@ -16,10 +15,12 @@ from apps.common.writers import (  # noqa: F401
 )
 
 if False:
-    from trezor.messages.TxInput import TxInput
-    from trezor.messages.TxOutput import TxOutput
-    from trezor.messages.PrevInput import PrevInput
-    from trezor.messages.PrevOutput import PrevOutput
+    from trezor.messages import (
+        PrevInput,
+        PrevOutput,
+        TxInput,
+        TxOutput,
+    )
     from trezor.utils import HashWriter
 
     from apps.common.writers import Writer
@@ -76,6 +77,18 @@ def write_op_push(w: Writer, n: int) -> None:
         w.append((n >> 8) & 0xFF)
         w.append((n >> 16) & 0xFF)
         w.append((n >> 24) & 0xFF)
+
+
+def op_push_length(n: int) -> int:
+    ensure(n >= 0 and n <= 0xFFFF_FFFF)
+    if n < 0x4C:
+        return 1
+    elif n < 0xFF:
+        return 2
+    elif n < 0xFFFF:
+        return 3
+    else:
+        return 4
 
 
 def get_tx_hash(w: HashWriter, double: bool = False, reverse: bool = False) -> bytes:

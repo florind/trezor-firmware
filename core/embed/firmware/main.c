@@ -40,9 +40,7 @@
 #include "display.h"
 #include "flash.h"
 #include "mpu.h"
-#ifdef RDI
-#include "rdi.h"
-#endif
+#include "random_delays.h"
 #ifdef SYSTEM_VIEW
 #include "systemview.h"
 #endif
@@ -51,9 +49,12 @@
 #include "supervise.h"
 #include "touch.h"
 
+// from util.s
+extern void shutdown_privileged(void);
+
 int main(void) {
-  // initialize pseudo-random number generator
-  drbg_init();
+  random_delays_init();
+
 #ifdef RDI
   rdi_start();
 #endif
@@ -182,6 +183,11 @@ void SVC_C_Handler(uint32_t *stack) {
       cyccnt_cycles = *DWT_CYCCNT_ADDR;
       break;
 #endif
+    case SVC_SHUTDOWN:
+      shutdown_privileged();
+      for (;;)
+        ;
+      break;
     default:
       stack[0] = 0xffffffff;
       break;

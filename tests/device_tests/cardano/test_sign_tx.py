@@ -34,12 +34,12 @@ pytestmark = [
     "cardano/sign_tx.slip39.json",
 )
 def test_cardano_sign_tx(client, parameters, result):
-    inputs = [cardano.create_input(i) for i in parameters["inputs"]]
-    outputs = [cardano.create_output(o) for o in parameters["outputs"]]
-    certificates = [cardano.create_certificate(c) for c in parameters["certificates"]]
-    withdrawals = [cardano.create_withdrawal(w) for w in parameters["withdrawals"]]
-
-    input_flow = parameters.get("input_flow", ())
+    signing_mode = messages.CardanoTxSigningMode.__members__[parameters["signing_mode"]]
+    inputs = [cardano.parse_input(i) for i in parameters["inputs"]]
+    outputs = [cardano.parse_output(o) for o in parameters["outputs"]]
+    certificates = [cardano.parse_certificate(c) for c in parameters["certificates"]]
+    withdrawals = [cardano.parse_withdrawal(w) for w in parameters["withdrawals"]]
+    auxiliary_data = cardano.parse_auxiliary_data(parameters["auxiliary_data"])
 
     if parameters.get("security_checks") == "prompt":
         device.apply_settings(
@@ -49,10 +49,9 @@ def test_cardano_sign_tx(client, parameters, result):
         device.apply_settings(client, safety_checks=messages.SafetyCheckLevel.Strict)
 
     with client:
-        client.set_input_flow(_to_device_actions(client, input_flow))
-
         response = cardano.sign_tx(
             client=client,
+            signing_mode=signing_mode,
             inputs=inputs,
             outputs=outputs,
             fee=parameters["fee"],
@@ -60,31 +59,29 @@ def test_cardano_sign_tx(client, parameters, result):
             validity_interval_start=parameters.get("validity_interval_start"),
             certificates=certificates,
             withdrawals=withdrawals,
-            metadata=bytes.fromhex(parameters["metadata"]),
             protocol_magic=parameters["protocol_magic"],
             network_id=parameters["network_id"],
+            auxiliary_data=auxiliary_data,
         )
-        assert response.tx_hash.hex() == result["tx_hash"]
-        assert response.serialized_tx.hex() == result["serialized_tx"]
+        assert response == _transform_expected_result(result)
 
 
 @parametrize_using_common_fixtures(
     "cardano/sign_tx.failed.json", "cardano/sign_tx_stake_pool_registration.failed.json"
 )
 def test_cardano_sign_tx_failed(client, parameters, result):
-    inputs = [cardano.create_input(i) for i in parameters["inputs"]]
-    outputs = [cardano.create_output(o) for o in parameters["outputs"]]
-    certificates = [cardano.create_certificate(c) for c in parameters["certificates"]]
-    withdrawals = [cardano.create_withdrawal(w) for w in parameters["withdrawals"]]
-
-    input_flow = parameters.get("input_flow", ())
+    signing_mode = messages.CardanoTxSigningMode.__members__[parameters["signing_mode"]]
+    inputs = [cardano.parse_input(i) for i in parameters["inputs"]]
+    outputs = [cardano.parse_output(o) for o in parameters["outputs"]]
+    certificates = [cardano.parse_certificate(c) for c in parameters["certificates"]]
+    withdrawals = [cardano.parse_withdrawal(w) for w in parameters["withdrawals"]]
+    auxiliary_data = cardano.parse_auxiliary_data(parameters["auxiliary_data"])
 
     with client:
-        client.set_input_flow(_to_device_actions(client, input_flow))
-
         with pytest.raises(TrezorFailure, match=result["error_message"]):
             cardano.sign_tx(
                 client=client,
+                signing_mode=signing_mode,
                 inputs=inputs,
                 outputs=outputs,
                 fee=parameters["fee"],
@@ -92,65 +89,37 @@ def test_cardano_sign_tx_failed(client, parameters, result):
                 validity_interval_start=parameters.get("validity_interval_start"),
                 certificates=certificates,
                 withdrawals=withdrawals,
-                metadata=bytes.fromhex(parameters["metadata"]),
                 protocol_magic=parameters["protocol_magic"],
                 network_id=parameters["network_id"],
+                auxiliary_data=auxiliary_data,
             )
 
 
-@parametrize_using_common_fixtures("cardano/sign_tx.chunked.json")
-def test_cardano_sign_tx_with_multiple_chunks(client, parameters, result):
-    inputs = [cardano.create_input(i) for i in parameters["inputs"]]
-    outputs = [cardano.create_output(o) for o in parameters["outputs"]]
-    certificates = [cardano.create_certificate(c) for c in parameters["certificates"]]
-    withdrawals = [cardano.create_withdrawal(w) for w in parameters["withdrawals"]]
+def _transform_expected_result(result):
+    """Transform the JSON representation of the expected result into the format which is returned by trezorlib.
 
-    input_flow = parameters.get("input_flow", ())
-
-    expected_responses = [
-        messages.PassphraseRequest(),
-        messages.ButtonRequest(),
-        messages.ButtonRequest(),
-    ]
-    expected_responses += [
-        messages.CardanoSignedTxChunk(signed_tx_chunk=bytes.fromhex(signed_tx_chunk))
-        for signed_tx_chunk in result["signed_tx_chunks"]
-    ]
-    expected_responses += [
-        messages.CardanoSignedTx(tx_hash=bytes.fromhex(result["tx_hash"]))
-    ]
-
-    with client:
-        client.set_input_flow(_to_device_actions(client, input_flow))
-        client.set_expected_responses(expected_responses)
-
-        response = cardano.sign_tx(
-            client=client,
-            inputs=inputs,
-            outputs=outputs,
-            fee=parameters["fee"],
-            ttl=parameters.get("ttl"),
-            validity_interval_start=parameters.get("validity_interval_start"),
-            certificates=certificates,
-            withdrawals=withdrawals,
-            metadata=bytes.fromhex(parameters["metadata"]),
-            protocol_magic=parameters["protocol_magic"],
-            network_id=parameters["network_id"],
-        )
-        assert response.tx_hash.hex() == result["tx_hash"]
-        assert response.serialized_tx.hex() == result["serialized_tx"]
-
-
-def _to_device_actions(client, input_flow):
-    if not input_flow:
-        yield
-
-    for sequence in input_flow:
-        yield
-        for action in sequence:
-            if action == "SWIPE":
-                client.debug.swipe_up()
-            elif action == "YES":
-                client.debug.press_yes()
-            else:
-                raise ValueError("Invalid input action")
+    This involves converting the hex strings into real binary values."""
+    transformed_result = {
+        "tx_hash": bytes.fromhex(result["tx_hash"]),
+        "witnesses": [
+            {
+                "type": witness["type"],
+                "pub_key": bytes.fromhex(witness["pub_key"]),
+                "signature": bytes.fromhex(witness["signature"]),
+                "chain_code": bytes.fromhex(witness["chain_code"])
+                if witness["chain_code"]
+                else None,
+            }
+            for witness in result["witnesses"]
+        ],
+    }
+    if supplement := result.get("auxiliary_data_supplement"):
+        transformed_result["auxiliary_data_supplement"] = {
+            "type": supplement["type"],
+            "auxiliary_data_hash": bytes.fromhex(supplement["auxiliary_data_hash"]),
+        }
+        if catalyst_signature := supplement.get("catalyst_signature"):
+            transformed_result["auxiliary_data_supplement"][
+                "catalyst_signature"
+            ] = bytes.fromhex(catalyst_signature)
+    return transformed_result

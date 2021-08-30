@@ -55,9 +55,6 @@
     "bitcoin:GRS": {
         "Electrum-GRS": "https://www.groestlcoin.org/groestlcoin-electrum-wallet"
     },
-    "bitcoin:HATCH": {
-        "HMT": "https://github.com/hatchpay/hatch-masternode-tool/"
-    },
     "bitcoin:KOTO": {
         "Electrum-KOTO": "https://electrum.kotocoin.info"
     },
@@ -113,7 +110,7 @@
         "Electrum-XPM": "https://github.com/justjamesdev/electrum-xpm"
     },
     "bitcoin:XRC": {
-        "Electrum-XRC": "https://electrum.bitcoinrh.org"
+        "Electrum-XRC": "https://electrum.xrhodium.org"
     },
     "bitcoin:XSN": {
         "Stakenet": "https://xsnexplorer.io/trezor"
@@ -130,5 +127,8 @@
     },
     "bitcoin:ZCR": {
         "Electrum-ZCR": "https://github.com/zcore-coin/electrum-wallet/"
+    },
+    "eth:WAN": {
+        "Wanchain Wallet": "https://www.wanchain.org/getstarted/"
     }
 }

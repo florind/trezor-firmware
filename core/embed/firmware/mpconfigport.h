@@ -40,6 +40,7 @@
 // memory allocation policies
 #define MICROPY_ALLOC_PATH_MAX      (128)
 #define MICROPY_ENABLE_PYSTACK      (1)
+#define MICROPY_LOADED_MODULES_DICT_SIZE (160)
 
 // emitters
 #define MICROPY_PERSISTENT_CODE_LOAD (0)
@@ -155,6 +156,7 @@
 #define MICROPY_PY_TREZORIO         (1)
 #define MICROPY_PY_TREZORUI         (1)
 #define MICROPY_PY_TREZORUTILS      (1)
+#define MICROPY_PY_TREZORPROTO      (1)
 
 #ifdef SYSTEM_VIEW
 #define MP_PLAT_PRINT_STRN(str, len) segger_print(str, len)

@@ -3,11 +3,8 @@ from micropython import const
 from trezor import loop, res, ui, utils
 from trezor.ui.loader import Loader, LoaderDefault
 
-from ..common.confirm import CANCELLED, CONFIRMED, INFO, ConfirmBase
+from ..common.confirm import CANCELLED, CONFIRMED, INFO, ConfirmBase, Pageable
 from .button import Button, ButtonAbort, ButtonCancel, ButtonConfirm, ButtonDefault
-
-if __debug__:
-    from apps.debug import swipe_signal, confirm_signal
 
 if False:
     from typing import Any
@@ -57,29 +54,6 @@ class Confirm(ConfirmBase):
         super().__init__(content, button_confirm, button_cancel)
 
 
-class Pageable:
-    def __init__(self) -> None:
-        self._page = 0
-
-    def page(self) -> int:
-        return self._page
-
-    def page_count(self) -> int:
-        raise NotImplementedError
-
-    def is_first(self) -> bool:
-        return self._page == 0
-
-    def is_last(self) -> bool:
-        return self._page == self.page_count() - 1
-
-    def next(self) -> None:
-        self._page = min(self._page + 1, self.page_count() - 1)
-
-    def prev(self) -> None:
-        self._page = max(self._page - 1, 0)
-
-
 class ConfirmPageable(Confirm):
     def __init__(self, pageable: Pageable, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
@@ -96,6 +70,8 @@ class ConfirmPageable(Confirm):
             directions = SWIPE_HORIZONTAL
 
         if __debug__:
+            from apps.debug import swipe_signal
+
             swipe = await loop.race(Swipe(directions), swipe_signal())
         else:
             swipe = await Swipe(directions)
@@ -196,6 +172,8 @@ class InfoConfirm(ui.Layout):
             return self.content.read_content()
 
         def create_tasks(self) -> tuple[loop.Task, ...]:
+            from apps.debug import confirm_signal
+
             return super().create_tasks() + (confirm_signal(),)
 
 
@@ -273,4 +251,6 @@ class HoldToConfirm(ui.Layout):
             return self.content.read_content()
 
         def create_tasks(self) -> tuple[loop.Task, ...]:
+            from apps.debug import confirm_signal
+
             return super().create_tasks() + (confirm_signal(),)

@@ -17,6 +17,7 @@
 import pytest
 
 from trezorlib import btc, messages, tools
+from trezorlib.exceptions import TrezorFailure
 
 VECTORS = (  # path, script_type, address
     (
@@ -51,6 +52,17 @@ def test_show(client, path, script_type, address):
     )
 
 
+def test_show_unrecognized_path(client):
+    with pytest.raises(TrezorFailure):
+        btc.get_address(
+            client,
+            "Bitcoin",
+            tools.parse_path("m/24684621h/516582h/5156h/21/856"),
+            script_type=messages.InputScriptType.SPENDWITNESS,
+            show_display=True,
+        )
+
+
 @pytest.mark.multisig
 def test_show_multisig_3(client):
     node = btc.get_public_node(
@@ -74,12 +86,13 @@ def test_show_multisig_3(client):
                 tools.parse_path(f"45h/0/0/{i}"),
                 show_display=True,
                 multisig=multisig,
+                script_type=messages.InputScriptType.SPENDMULTISIG,
             )
             == "35Q3tgZZfr9GhVpaqz7fbDK8WXV1V1KxfD"
         )
 
 
-VECTORS_MULTISIG = (  # script_type, purpose48_type, address, xpubs, ignore_xpub_magic
+VECTORS_MULTISIG = (  # script_type, bip48_type, address, xpubs, ignore_xpub_magic
     (
         messages.InputScriptType.SPENDMULTISIG,
         0,
@@ -152,15 +165,15 @@ VECTORS_MULTISIG = (  # script_type, purpose48_type, address, xpubs, ignore_xpub
 @pytest.mark.skip_t1
 @pytest.mark.multisig
 @pytest.mark.parametrize(
-    "script_type, purpose48_type, address, xpubs, ignore_xpub_magic", VECTORS_MULTISIG
+    "script_type, bip48_type, address, xpubs, ignore_xpub_magic", VECTORS_MULTISIG
 )
 def test_show_multisig_xpubs(
-    client, script_type, purpose48_type, address, xpubs, ignore_xpub_magic
+    client, script_type, bip48_type, address, xpubs, ignore_xpub_magic
 ):
     nodes = [
         btc.get_public_node(
             client,
-            tools.parse_path(f"48h/0h/{i}h/{purpose48_type}h"),
+            tools.parse_path(f"48h/0h/{i}h/{bip48_type}h"),
             coin_name="Bitcoin",
         )
         for i in range(3)
@@ -176,7 +189,7 @@ def test_show_multisig_xpubs(
 
         def input_flow():
             yield  # show address
-            lines = client.debug.wait_layout().lines
+            lines = client.debug.wait_layout().lines  # TODO: do not need to *wait* now?
             assert lines[0] == "Multisig 2 of 3"
             assert "".join(lines[1:]) == address
 
@@ -189,6 +202,7 @@ def test_show_multisig_xpubs(
             lines1 = client.debug.wait_layout().lines
             assert lines1[0] == "XPUB #1 " + ("(yours)" if i == 0 else "(cosigner)")
             client.debug.swipe_up()
+
             lines2 = client.debug.wait_layout().lines
             assert lines2[0] == "XPUB #1 " + ("(yours)" if i == 0 else "(cosigner)")
             assert "".join(lines1[1:] + lines2[1:]) == xpubs[0]
@@ -198,6 +212,7 @@ def test_show_multisig_xpubs(
             lines1 = client.debug.wait_layout().lines
             assert lines1[0] == "XPUB #2 " + ("(yours)" if i == 1 else "(cosigner)")
             client.debug.swipe_up()
+
             lines2 = client.debug.wait_layout().lines
             assert lines2[0] == "XPUB #2 " + ("(yours)" if i == 1 else "(cosigner)")
             assert "".join(lines1[1:] + lines2[1:]) == xpubs[1]
@@ -207,6 +222,7 @@ def test_show_multisig_xpubs(
             lines1 = client.debug.wait_layout().lines
             assert lines1[0] == "XPUB #3 " + ("(yours)" if i == 2 else "(cosigner)")
             client.debug.swipe_up()
+
             lines2 = client.debug.wait_layout().lines
             assert lines2[0] == "XPUB #3 " + ("(yours)" if i == 2 else "(cosigner)")
             assert "".join(lines1[1:] + lines2[1:]) == xpubs[2]
@@ -219,7 +235,7 @@ def test_show_multisig_xpubs(
             btc.get_address(
                 client,
                 "Bitcoin",
-                tools.parse_path(f"48h/0h/{i}h/{purpose48_type}h/0/0"),
+                tools.parse_path(f"48h/0h/{i}h/{bip48_type}h/0/0"),
                 show_display=True,
                 multisig=multisig,
                 script_type=script_type,
@@ -247,6 +263,7 @@ def test_show_multisig_15(client):
                 tools.parse_path(f"45h/0/0/{i}"),
                 show_display=True,
                 multisig=multisig,
+                script_type=messages.InputScriptType.SPENDMULTISIG,
             )
             == "3GG78bp1hA3mu9xv1vZLXiENmeabmi7WKQ"
         )

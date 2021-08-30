@@ -1,16 +1,18 @@
-from trezor.messages.StellarAccountMergeOp import StellarAccountMergeOp
-from trezor.messages.StellarAllowTrustOp import StellarAllowTrustOp
-from trezor.messages.StellarAssetType import StellarAssetType
-from trezor.messages.StellarBumpSequenceOp import StellarBumpSequenceOp
-from trezor.messages.StellarChangeTrustOp import StellarChangeTrustOp
-from trezor.messages.StellarCreateAccountOp import StellarCreateAccountOp
-from trezor.messages.StellarCreatePassiveOfferOp import StellarCreatePassiveOfferOp
-from trezor.messages.StellarManageDataOp import StellarManageDataOp
-from trezor.messages.StellarManageOfferOp import StellarManageOfferOp
-from trezor.messages.StellarPathPaymentOp import StellarPathPaymentOp
-from trezor.messages.StellarPaymentOp import StellarPaymentOp
-from trezor.messages.StellarSetOptionsOp import StellarSetOptionsOp
-from trezor.wire import ProcessError
+from trezor.messages import (
+    StellarAccountMergeOp,
+    StellarAllowTrustOp,
+    StellarAssetType,
+    StellarBumpSequenceOp,
+    StellarChangeTrustOp,
+    StellarCreateAccountOp,
+    StellarCreatePassiveOfferOp,
+    StellarManageDataOp,
+    StellarManageOfferOp,
+    StellarPathPaymentOp,
+    StellarPaymentOp,
+    StellarSetOptionsOp,
+)
+from trezor.wire import DataError, ProcessError
 
 from .. import consts, writers
 
@@ -136,8 +138,9 @@ def _write_set_options_int(w, value: int):
 def write_account(w, source_account: str):
     if source_account is None:
         writers.write_bool(w, False)
-        return
-    writers.write_pubkey(w, source_account)
+    else:
+        writers.write_bool(w, True)
+        writers.write_pubkey(w, source_account)
 
 
 def _write_asset_code(w, asset_type: int, asset_code: str):
@@ -145,9 +148,13 @@ def _write_asset_code(w, asset_type: int, asset_code: str):
     if asset_type == consts.ASSET_TYPE_NATIVE:
         return  # nothing is needed
     elif asset_type == consts.ASSET_TYPE_ALPHANUM4:
+        if len(code) > 4:
+            raise DataError("Stellar: asset code too long for ALPHANUM4")
         # pad with zeros to 4 chars
         writers.write_bytes_fixed(w, code + bytearray([0] * (4 - len(code))), 4)
     elif asset_type == consts.ASSET_TYPE_ALPHANUM12:
+        if len(code) > 12:
+            raise DataError("Stellar: asset code too long for ALPHANUM12")
         # pad with zeros to 12 chars
         writers.write_bytes_fixed(w, code + bytearray([0] * (12 - len(code))), 12)
     else:

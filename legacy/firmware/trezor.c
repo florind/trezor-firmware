@@ -123,7 +123,7 @@ int main(void) {
                                    // unpredictable stack protection checks
   oledInit();
 #else
-  // check_bootloader(true);
+//  check_and_replace_bootloader(true);
   setupApp();
   __stack_chk_guard = random32();  // this supports compiler provided
                                    // unpredictable stack protection checks
@@ -157,7 +157,11 @@ int main(void) {
   layoutHome();
   usbInit();
   for (;;) {
+#if EMULATOR
+    usbSleep(10);
+#else
     usbPoll();
+#endif
     check_lock_screen();
   }
 

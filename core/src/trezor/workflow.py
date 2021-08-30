@@ -1,5 +1,6 @@
 import utime
 
+import storage.cache
 from trezor import log, loop
 
 if False:
@@ -8,7 +9,7 @@ if False:
     IdleCallback = Callable[[], None]
 
 if __debug__:
-    # Used in `on_close` bellow for memory statistics.
+    # Used in `on_close` below for memory statistics.
 
     import micropython
 
@@ -127,6 +128,8 @@ def close_others() -> None:
     for task in list(tasks):
         if not task.is_running():
             task.close()
+
+    storage.cache.homescreen_shown = None
 
     # if tasks were running, closing the last of them will run start_default
 

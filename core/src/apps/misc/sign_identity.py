@@ -2,16 +2,15 @@ from ustruct import pack, unpack
 
 from trezor import wire
 from trezor.crypto.hashlib import sha256
-from trezor.messages.SignedIdentity import SignedIdentity
+from trezor.messages import SignedIdentity
 from trezor.ui.layouts import confirm_sign_identity
 
-from apps.common import HARDENED, coininfo
+from apps.common import coininfo
 from apps.common.keychain import get_keychain
-from apps.common.paths import AlwaysMatchingSchema
+from apps.common.paths import HARDENED, AlwaysMatchingSchema
 
 if False:
-    from trezor.messages.IdentityType import IdentityType
-    from trezor.messages.SignIdentity import SignIdentity
+    from trezor.messages import IdentityType, SignIdentity
 
     from apps.common.paths import Bip32Path
 

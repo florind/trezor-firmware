@@ -55,7 +55,6 @@
 
 #if !BITCOIN_ONLY
 #include "ethereum.h"
-#include "lisk.h"
 #include "nem.h"
 #include "nem2.h"
 #include "stellar.h"
@@ -306,7 +305,20 @@ static bool fsm_layoutAddress(const char *address, const char *desc,
 }
 
 void fsm_msgRebootToBootloader(void) {
-  fsm_sendSuccess(_("You are being rebooted"));
+  layoutDialogSwipe(&bmp_icon_question, _("Cancel"), _("Confirm"), NULL,
+                    _("Do you want to"), _("restart device in"),
+                    _("bootloader mode?"), NULL, NULL, NULL);
+  if (!protectButton(ButtonRequestType_ButtonRequest_ProtectCall, false)) {
+    fsm_sendFailure(FailureType_Failure_ActionCancelled, NULL);
+    layoutHome();
+    return;
+  }
+  oledClear();
+  oledRefresh();
+  fsm_sendSuccess(_("Rebooting"));
+  // make sure the outgoing message is sent
+  usbPoll();
+  usbSleep(500);
 #if !EMULATOR
   svc_reboot_to_bootloader();
 #else
@@ -322,7 +334,6 @@ void fsm_msgRebootToBootloader(void) {
 #if !BITCOIN_ONLY
 
 #include "fsm_msg_ethereum.h"
-#include "fsm_msg_lisk.h"
 #include "fsm_msg_nem.h"
 #include "fsm_msg_stellar.h"
 

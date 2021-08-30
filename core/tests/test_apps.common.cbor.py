@@ -3,15 +3,51 @@ import math
 from common import *
 
 from apps.common.cbor import (
-    Tagged,
     IndefiniteLengthArray,
+    OrderedMap,
+    Tagged,
+    create_array_header,
+    create_map_header,
     decode,
     encode,
     encode_chunked,
     encode_streamed,
 )
 
+
 class TestCardanoCbor(unittest.TestCase):
+    def test_create_array_header(self):
+        test_vectors = [
+            (0, '80'),
+            (23, '97'),
+            ((2 ** 8) - 1, '98ff'),
+            ((2 ** 16) - 1, '99ffff'),
+            ((2 ** 32) - 1, '9affffffff'),
+            ((2 ** 64) - 1, '9bffffffffffffffff'),
+        ]
+        for val, header_hex in test_vectors:
+            header = unhexlify(header_hex)
+            self.assertEqual(create_array_header(val), header)
+
+        with self.assertRaises(NotImplementedError):
+            create_array_header(2 ** 64)
+
+    def test_create_map_header(self):
+        test_vectors = [
+            (0, 'a0'),
+            (23, 'b7'),
+            ((2 ** 8) - 1, 'b8ff'),
+            ((2 ** 16) - 1, 'b9ffff'),
+            ((2 ** 32) - 1, 'baffffffff'),
+            ((2 ** 64) - 1, 'bbffffffffffffffff'),
+        ]
+        for val, header_hex in test_vectors:
+            header = unhexlify(header_hex)
+            self.assertEqual(create_map_header(val), header)
+
+        with self.assertRaises(NotImplementedError):
+            create_map_header(2 ** 64)
+
     def test_cbor_encoding(self):
         test_vectors = [
             # unsigned integers
@@ -59,6 +95,7 @@ class TestCardanoCbor(unittest.TestCase):
             # maps
             ({}, 'a0'),
             ({1: 2, 3: 4}, 'a201020304'),
+            ({3: 4, 1: 2}, 'a201020304'),
 
             # indefinite
             (IndefiniteLengthArray([]), '9fff'),
@@ -93,6 +130,25 @@ class TestCardanoCbor(unittest.TestCase):
             encoded = unhexlify(encoded_hex)
             self.assertEqual(encode(value_tuple), encoded)
             self.assertEqual(decode(encoded), val)
+
+    def test_cbor_ordered_map(self):
+        """
+        OrderedMaps should be encoded as maps without any ordering and decoded back as dicts.
+        """
+        test_vectors = [
+            ({}, 'a0'),
+            ([[1, 2], [3, 4]], 'a201020304'),
+            ([[3, 4], [1, 2]], 'a203040102'),
+        ]
+
+        for val, encoded_hex in test_vectors:
+            ordered_map = OrderedMap()
+            for key, value in val:
+                ordered_map[key] = value
+
+            encoded = unhexlify(encoded_hex)
+            self.assertEqual(encode(ordered_map), encoded)
+            self.assertEqual(decode(encoded), {k: v for k, v in val})
 
     def test_encode_streamed(self):
         large_dict = {i: i for i in range(100)}

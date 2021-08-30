@@ -1,9 +1,7 @@
 from micropython import const
 
 from trezor import wire
-from trezor.messages.PrevTx import PrevTx
-from trezor.messages.SignTx import SignTx
-from trezor.messages.TxInput import TxInput
+from trezor.messages import PrevTx, SignTx, TxInput
 
 from apps.common.writers import write_bitcoin_varint
 
@@ -13,6 +11,7 @@ from . import helpers
 from .bitcoin import Bitcoin
 
 if False:
+    from typing import Sequence
     from .tx_info import OriginalTxInfo, TxInfo
 
 _SIGHASH_FORKID = const(0x40)
@@ -31,8 +30,7 @@ class Bitcoinlike(Bitcoin):
             multisig.multisig_pubkey_index(txi.multisig, public_key)
 
         # serialize input with correct signature
-        script_sig = self.input_derive_script(txi, public_key, signature)
-        self.write_tx_input(self.serialized_tx, txi, script_sig)
+        self.write_tx_input_derived(self.serialized_tx, txi, public_key, signature)
         self.set_serialized_signature(i_sign, signature)
 
     async def sign_nonsegwit_input(self, i_sign: int) -> None:
@@ -46,7 +44,7 @@ class Bitcoinlike(Bitcoin):
         i: int,
         txi: TxInput,
         tx_info: TxInfo | OriginalTxInfo,
-        public_keys: list[bytes],
+        public_keys: Sequence[bytes | memoryview],
         threshold: int,
         script_pubkey: bytes,
         tx_hash: bytes | None = None,

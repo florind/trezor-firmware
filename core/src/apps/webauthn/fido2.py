@@ -5,23 +5,19 @@ from micropython import const
 
 import storage
 import storage.resident_credentials
+from storage.fido2 import KEY_AGREEMENT_PRIVKEY, KEY_AGREEMENT_PUBKEY
 from trezor import config, io, log, loop, ui, utils, workflow
 from trezor.crypto import aes, der, hashlib, hmac, random
 from trezor.crypto.curve import nist256p1
-from trezor.ui.components.tt.confirm import (
-    CONFIRMED,
-    Confirm,
-    ConfirmPageable,
-    Pageable,
-)
-from trezor.ui.components.tt.text import Text
-from trezor.ui.popup import Popup
+from trezor.ui.components.common.confirm import Pageable
+from trezor.ui.components.common.webauthn import ConfirmInfo
+from trezor.ui.layouts import show_popup
+from trezor.ui.layouts.tt.webauthn import confirm_webauthn, confirm_webauthn_reset
 
 from apps.base import set_homescreen
 from apps.common import cbor
 
 from . import common
-from .confirm import ConfirmContent, ConfirmInfo
 from .credential import CRED_ID_MAX_LENGTH, Credential, Fido2Credential, U2fCredential
 from .resident_credentials import find_by_rp_id_hash, store_resident_credential
 
@@ -210,10 +206,6 @@ _RESULT_CONFIRM = const(1)  # User confirmed.
 _RESULT_DECLINE = const(2)  # User declined.
 _RESULT_CANCEL = const(3)  # Request was cancelled by _CMD_CANCEL.
 _RESULT_TIMEOUT = const(4)  # Request exceeded _FIDO2_CONFIRM_TIMEOUT_MS.
-
-# Generate the authenticatorKeyAgreementKey used for ECDH in authenticatorClientPIN getKeyAgreement.
-_KEY_AGREEMENT_PRIVKEY = nist256p1.generate_secret()
-_KEY_AGREEMENT_PUBKEY = nist256p1.publickey(_KEY_AGREEMENT_PRIVKEY, False)
 
 # FIDO2 configuration.
 _ALLOW_FIDO2 = True
@@ -599,14 +591,6 @@ async def verify_user(keepalive_callback: KeepaliveCallback) -> bool:
     return ret
 
 
-async def confirm(*args: Any, **kwargs: Any) -> bool:
-    return await Confirm(*args, **kwargs) is CONFIRMED
-
-
-async def confirm_pageable(*args: Any, **kwargs: Any) -> bool:
-    return await ConfirmPageable(*args, **kwargs) is CONFIRMED
-
-
 class State:
     def __init__(self, cid: int, iface: io.HID) -> None:
         self.cid = cid
@@ -664,23 +648,23 @@ class U2fConfirmRegister(U2fState):
 
     async def confirm_dialog(self) -> bool:
         if self._cred.rp_id_hash in _BOGUS_APPIDS:
-            text = Text("U2F", ui.ICON_WRONG, ui.RED)
             if self.cid == _last_good_auth_check_cid:
-                text.bold("Already registered.")
-                text.br_half()
-                text.normal(
-                    "This device is already", "registered with this", "application."
+                await show_popup(
+                    title="U2F",
+                    subtitle="Already registered.",
+                    description="This device is already\nregistered with this\napplication.",
+                    timeout_ms=_POPUP_TIMEOUT_MS,
                 )
             else:
-                text.bold("Not registered.")
-                text.br_half()
-                text.normal(
-                    "This device is not", "registered with this", "application."
+                await show_popup(
+                    title="U2F",
+                    subtitle="Not registered.",
+                    description="This device is not\nregistered with this\napplication.",
+                    timeout_ms=_POPUP_TIMEOUT_MS,
                 )
-            return await Popup(text, _POPUP_TIMEOUT_MS)
+            return False
         else:
-            content = ConfirmContent(self)
-            return await confirm(content)
+            return await confirm_webauthn(None, self)
 
     def get_header(self) -> str:
         return "U2F Register"
@@ -703,8 +687,7 @@ class U2fConfirmAuthenticate(U2fState):
         return "U2F Authenticate"
 
     async def confirm_dialog(self) -> bool:
-        content = ConfirmContent(self)
-        return await confirm(content)
+        return await confirm_webauthn(None, self)
 
     def __eq__(self, other: object) -> bool:
         return (
@@ -820,8 +803,7 @@ class Fido2ConfirmMakeCredential(Fido2State, ConfirmInfo):
         return self._cred.account_name()
 
     async def confirm_dialog(self) -> bool:
-        content = ConfirmContent(self)
-        if not await confirm(content):
+        if not await confirm_webauthn(None, self):
             return False
         if self._user_verification:
             return await verify_user(KeepaliveCallback(self.cid, self.iface))
@@ -854,11 +836,13 @@ class Fido2ConfirmExcluded(Fido2ConfirmMakeCredential):
         await send_cmd(cmd, self.iface)
         self.finished = True
 
-        text = Text("FIDO2 Register", ui.ICON_WRONG, ui.RED)
-        text.bold("Already registered.")
-        text.br_half()
-        text.normal("This device is already", "registered with", self._cred.rp_id + ".")
-        await Popup(text, _POPUP_TIMEOUT_MS)
+        await show_popup(
+            title="FIDO2 Register",
+            subtitle="Already registered.",
+            description="This device is already\nregistered with {}.",
+            description_param=self._cred.rp_id,
+            timeout_ms=_POPUP_TIMEOUT_MS,
+        )
 
 
 class Fido2ConfirmGetAssertion(Fido2State, ConfirmInfo, Pageable):
@@ -895,8 +879,7 @@ class Fido2ConfirmGetAssertion(Fido2State, ConfirmInfo, Pageable):
         return len(self._creds)
 
     async def confirm_dialog(self) -> bool:
-        content = ConfirmContent(self)
-        if not await confirm_pageable(self, content):
+        if not await confirm_webauthn(None, self, pageable=self):
             return False
         if self._user_verification:
             return await verify_user(KeepaliveCallback(self.cid, self.iface))
@@ -941,11 +924,13 @@ class Fido2ConfirmNoPin(State):
         await send_cmd(cmd, self.iface)
         self.finished = True
 
-        text = Text("FIDO2 Verify User", ui.ICON_WRONG, ui.RED)
-        text.bold("Unable to verify user.")
-        text.br_half()
-        text.normal("Please enable PIN", "protection.")
-        return await Popup(text, _POPUP_TIMEOUT_MS)
+        await show_popup(
+            title="FIDO2 Verify User",
+            subtitle="Unable to verify user.",
+            description="Please enable PIN\nprotection.",
+            timeout_ms=_POPUP_TIMEOUT_MS,
+        )
+        return False
 
 
 class Fido2ConfirmNoCredentials(Fido2ConfirmGetAssertion):
@@ -961,13 +946,13 @@ class Fido2ConfirmNoCredentials(Fido2ConfirmGetAssertion):
         await send_cmd(cmd, self.iface)
         self.finished = True
 
-        text = Text("FIDO2 Authenticate", ui.ICON_WRONG, ui.RED)
-        text.bold("Not registered.")
-        text.br_half()
-        text.normal(
-            "This device is not", "registered with", self._creds[0].app_name() + "."
+        await show_popup(
+            title="FIDO2 Authenticate",
+            subtitle="Not registered.",
+            description="This device is not\nregistered with\n{}.",
+            description_param=self._creds[0].app_name(),
+            timeout_ms=_POPUP_TIMEOUT_MS,
         )
-        await Popup(text, _POPUP_TIMEOUT_MS)
 
 
 class Fido2ConfirmReset(Fido2State):
@@ -975,10 +960,7 @@ class Fido2ConfirmReset(Fido2State):
         super().__init__(cid, iface)
 
     async def confirm_dialog(self) -> bool:
-        text = Text("FIDO2 Reset", ui.ICON_CONFIG)
-        text.normal("Do you really want to")
-        text.bold("erase all credentials?")
-        return await confirm(text)
+        return await confirm_webauthn_reset()
 
     async def on_confirm(self) -> None:
         storage.resident_credentials.delete_all()
@@ -1482,7 +1464,7 @@ def cbor_make_credential_process(req: Cmd, dialog_mgr: DialogManager) -> State |
         return cbor_error(req.cid, _ERR_OTHER)
 
     try:
-        param = cbor.decode(req.data[1:])
+        param = cbor.decode(req.data, offset=1)
         rp = param[_MAKECRED_CMD_RP]
         rp_id = rp["id"]
         rp_id_hash = hashlib.sha256(rp_id).digest()
@@ -1660,7 +1642,7 @@ def cbor_get_assertion_process(req: Cmd, dialog_mgr: DialogManager) -> State | C
         return cbor_error(req.cid, _ERR_OTHER)
 
     try:
-        param = cbor.decode(req.data[1:])
+        param = cbor.decode(req.data, offset=1)
         rp_id = param[_GETASSERT_CMD_RP_ID]
         rp_id_hash = hashlib.sha256(rp_id).digest()
 
@@ -1781,7 +1763,7 @@ def cbor_get_assertion_hmac_secret(cred: Credential, hmac_secret: dict) -> bytes
         raise CborError(_ERR_INVALID_LEN)
 
     # Compute the ECDH shared secret.
-    ecdh_result = nist256p1.multiply(_KEY_AGREEMENT_PRIVKEY, b"\04" + x + y)
+    ecdh_result = nist256p1.multiply(KEY_AGREEMENT_PRIVKEY, b"\04" + x + y)
     shared_secret = hashlib.sha256(ecdh_result[1:33]).digest()
 
     # Check the authentication tag and decrypt the salt.
@@ -1882,7 +1864,7 @@ def cbor_get_info(req: Cmd) -> Cmd:
 
 def cbor_client_pin(req: Cmd) -> Cmd:
     try:
-        param = cbor.decode(req.data[1:])
+        param = cbor.decode(req.data, offset=1)
         pin_protocol = param[_CLIENTPIN_CMD_PIN_PROTOCOL]
         subcommand = param[_CLIENTPIN_CMD_SUBCOMMAND]
     except Exception:
@@ -1904,8 +1886,8 @@ def cbor_client_pin(req: Cmd) -> Cmd:
             common.COSE_KEY_ALG: common.COSE_ALG_ECDH_ES_HKDF_256,
             common.COSE_KEY_KTY: common.COSE_KEYTYPE_EC2,
             common.COSE_KEY_CRV: common.COSE_CURVE_P256,
-            common.COSE_KEY_X: _KEY_AGREEMENT_PUBKEY[1:33],
-            common.COSE_KEY_Y: _KEY_AGREEMENT_PUBKEY[33:],
+            common.COSE_KEY_X: KEY_AGREEMENT_PUBKEY[1:33],
+            common.COSE_KEY_Y: KEY_AGREEMENT_PUBKEY[33:],
         }
     }
 

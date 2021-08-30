@@ -1,4 +1,5 @@
 # pylint: disable=E0602
+# fmt: off
 
 import os
 
@@ -48,6 +49,7 @@ CPPDEFINES_MOD += [
     ('USE_EOS', '1' if EVERYTHING else '0'),
 ]
 SOURCE_MOD += [
+    'embed/extmod/trezorobj.c',
     'embed/extmod/modtrezorcrypto/modtrezorcrypto.c',
     'embed/extmod/modtrezorcrypto/crc.c',
     'vendor/trezor-crypto/address.c',
@@ -132,10 +134,13 @@ if FEATURE_FLAGS["SECP256K1_ZKP"]:
 
 # modtrezorio
 SOURCE_MOD += [
-    'embed/extmod/modtrezorio/ff.c',
-    'embed/extmod/modtrezorio/ffunicode.c',
     'embed/extmod/modtrezorio/modtrezorio.c',
 ]
+if TREZOR_MODEL == "T":
+    SOURCE_MOD += [
+        'embed/extmod/modtrezorio/ff.c',
+        'embed/extmod/modtrezorio/ffunicode.c',
+    ]
 
 # modtrezorui
 CPPPATH_MOD += [
@@ -167,6 +172,11 @@ if FROZEN:
 # modtrezorutils
 SOURCE_MOD += [
     'embed/extmod/modtrezorutils/modtrezorutils.c',
+]
+
+# rust mods
+SOURCE_MOD += [
+    'embed/extmod/rustmods/modtrezorproto.c',
 ]
 
 # modutime
@@ -303,9 +313,8 @@ SOURCE_UNIX = [
     'embed/unix/flash.c',
     'embed/unix/main.c',
     'embed/unix/profile.c',
+    'embed/unix/random_delays.c',
     'embed/unix/rng.c',
-    'embed/unix/sbu.c',
-    'embed/unix/sdcard.c',
     'embed/unix/touch.c',
     'embed/unix/usb.c',
     'vendor/micropython/lib/utils/gchelper_generic.c',
@@ -314,10 +323,20 @@ SOURCE_UNIX = [
     'vendor/micropython/ports/unix/input.c',
     'vendor/micropython/ports/unix/unix_mphal.c',
 ]
+if TREZOR_MODEL == 'T':
+    SOURCE_UNIX += [
+        'embed/unix/sbu.c',
+        'embed/unix/sdcard.c',
+    ]
 
 SOURCE_QSTR = SOURCE_MOD + SOURCE_MICROPYTHON + SOURCE_UNIX
 
-env = Environment(ENV=os.environ, CFLAGS='%s -DPYOPT=%s -DBITCOIN_ONLY=%s' % (ARGUMENTS.get('CFLAGS', ''), PYOPT, BITCOIN_ONLY))
+if PYOPT == '0' or not FROZEN:
+    STATIC="-DSTATIC="
+else:
+    STATIC=""
+
+env = Environment(ENV=os.environ, CFLAGS='%s -DPYOPT=%s -DBITCOIN_ONLY=%s %s' % (ARGUMENTS.get('CFLAGS', ''), PYOPT, BITCOIN_ONLY, STATIC))
 
 env.Tool('micropython')
 
@@ -367,6 +386,7 @@ env.Replace(
     LIBS=['m'],
     CPPPATH=[
         '.',
+        'embed/rust',
         'embed/unix',
         'embed/extmod/modtrezorui',
         'vendor/micropython',
@@ -391,12 +411,25 @@ env.Replace(
     MAKEVERSIONHDR='$PYTHON vendor/micropython/py/makeversionhdr.py',
     MAKEMODULEDEFS='$PYTHON vendor/micropython/py/makemoduledefs.py',
     MPY_TOOL='$PYTHON vendor/micropython/tools/mpy-tool.py',
-    MPY_CROSS='vendor/micropython/mpy-cross/mpy-cross -O' + PYOPT
+    MPY_CROSS='vendor/micropython/mpy-cross/mpy-cross -O' + PYOPT,
+    PB2PY='$PYTHON ../common/protob/pb2py',
 )
 
 #
 # Qstrings
 #
+
+PROTO_SOURCES_DIR = '../../../common/protob/'
+PROTO_SOURCES = Glob(PROTO_SOURCES_DIR + '*.proto',
+    exclude=[PROTO_SOURCES_DIR + 'messages-bootloader.proto']
+)
+qstr_protobuf = env.Command(
+    target=[
+        'genhdr/qstrdefs.protobuf.h',
+    ],
+    source=PROTO_SOURCES,
+    action='$PB2PY $SOURCES --qstr-out ${TARGET} --bitcoin-only=%s' % BITCOIN_ONLY,
+)
 
 qstr_micropython = 'vendor/micropython/py/qstrdefs.h'
 
@@ -405,7 +438,7 @@ qstr_collected = env.CollectQstr(
 
 qstr_preprocessed = env.PreprocessQstr(
     target='genhdr/qstrdefs.preprocessed.h',
-    source=[qstr_micropython, qstr_collected])
+    source=[qstr_micropython, qstr_protobuf, qstr_collected])
 
 qstr_generated = env.GenerateQstrDefs(
     target='genhdr/qstrdefs.generated.h', source=qstr_preprocessed)
@@ -451,7 +484,12 @@ if FROZEN:
     if TREZOR_MODEL == 'T':
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/ui/components/tt/*.py'))
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/ui/constants/tt.py'))
-        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/ui/layouts/tt.py'))
+        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/ui/layouts/tt/__init__.py'))
+        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/ui/layouts/tt/reset.py'))
+        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/ui/layouts/tt/recovery.py'))
+        if EVERYTHING:
+            SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/ui/layouts/tt/altcoin.py'))
+            SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/ui/layouts/tt/webauthn.py'))
     elif TREZOR_MODEL == '1':
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/ui/components/t1/*.py'))
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/ui/constants/t1.py'))
@@ -463,19 +501,19 @@ if FROZEN:
 
     SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'storage/*.py'))
 
-    SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/messages/*.py',
+    SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/messages/__init__.py'))
+    SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/enums/*.py',
         exclude=[
-            SOURCE_PY_DIR + 'trezor/messages/Binance*.py',
-            SOURCE_PY_DIR + 'trezor/messages/Cardano*.py',
-            SOURCE_PY_DIR + 'trezor/messages/DebugMonero*.py',
-            SOURCE_PY_DIR + 'trezor/messages/Eos*.py',
-            SOURCE_PY_DIR + 'trezor/messages/Ethereum*.py',
-            SOURCE_PY_DIR + 'trezor/messages/Lisk*.py',
-            SOURCE_PY_DIR + 'trezor/messages/Monero*.py',
-            SOURCE_PY_DIR + 'trezor/messages/NEM*.py',
-            SOURCE_PY_DIR + 'trezor/messages/Ripple*.py',
-            SOURCE_PY_DIR + 'trezor/messages/Stellar*.py',
-            SOURCE_PY_DIR + 'trezor/messages/Tezos*.py',
+            SOURCE_PY_DIR + 'trezor/enums/Binance*.py',
+            SOURCE_PY_DIR + 'trezor/enums/Cardano*.py',
+            SOURCE_PY_DIR + 'trezor/enums/DebugMonero*.py',
+            SOURCE_PY_DIR + 'trezor/enums/Eos*.py',
+            SOURCE_PY_DIR + 'trezor/enums/Ethereum*.py',
+            SOURCE_PY_DIR + 'trezor/enums/Monero*.py',
+            SOURCE_PY_DIR + 'trezor/enums/NEM*.py',
+            SOURCE_PY_DIR + 'trezor/enums/Ripple*.py',
+            SOURCE_PY_DIR + 'trezor/enums/Stellar*.py',
+            SOURCE_PY_DIR + 'trezor/enums/Tezos*.py',
         ])
     )
 
@@ -484,7 +522,11 @@ if FROZEN:
     SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/common/*/*.py'))
     SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/debug/*.py'))
     SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/homescreen/*.py'))
-    SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/management/*.py'))
+    SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/management/*.py',
+        exclude=[
+            SOURCE_PY_DIR + 'apps/management/sd_protect.py',
+        ] if TREZOR_MODEL != 'T' else [])
+    )
     SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/management/*/*.py'))
     SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/misc/*.py'))
     SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/bitcoin/*.py'))
@@ -498,41 +540,38 @@ if FROZEN:
 
     if EVERYTHING:
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/binance/*.py'))
-        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/messages/Binance*.py'))
+        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/enums/Binance*.py'))
 
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/cardano/*.py'))
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/cardano/*/*.py'))
-        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/messages/Cardano*.py'))
+        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/enums/Cardano*.py'))
 
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/eos/*.py'))
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/eos/*/*.py'))
-        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/messages/Eos*.py'))
+        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/enums/Eos*.py'))
 
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/ethereum/*.py'))
-        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/messages/Ethereum*.py'))
-
-        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/lisk/*.py'))
-        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/messages/Lisk*.py'))
+        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/enums/Ethereum*.py'))
 
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/monero/*.py'))
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/monero/*/*.py'))
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/monero/*/*/*.py'))
-        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/messages/DebugMonero*.py'))
-        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/messages/Monero*.py'))
+        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/enums/DebugMonero*.py'))
+        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/enums/Monero*.py'))
 
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/nem/*.py'))
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/nem/*/*.py'))
-        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/messages/NEM*.py'))
+        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/enums/NEM*.py'))
 
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/ripple/*.py'))
-        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/messages/Ripple*.py'))
+        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/enums/Ripple*.py'))
 
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/stellar/*.py'))
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/stellar/*/*.py'))
-        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/messages/Stellar*.py'))
+        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/enums/Stellar*.py'))
 
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/tezos/*.py'))
-        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/messages/Tezos*.py'))
+        SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'trezor/enums/Tezos*.py'))
 
         SOURCE_PY.extend(Glob(SOURCE_PY_DIR + 'apps/webauthn/*.py'))
 
@@ -568,6 +607,49 @@ if FEATURE_FLAGS["SECP256K1_ZKP"]:
     )
 
 #
+# Rust library
+#
+
+protobuf_blobs = env.Command(
+    target=[
+        'rust/proto_enums.data',
+        'rust/proto_msgs.data',
+        'rust/proto_names.data',
+        'rust/proto_wire.data',
+    ],
+    source=PROTO_SOURCES,
+    action='$PB2PY --bitcoin-only=%s --blob-outdir ${TARGET.dir} $SOURCES --qstr-defs build/unix/genhdr/qstrdefs.generated.h' % BITCOIN_ONLY,
+)
+env.Depends(protobuf_blobs, qstr_generated)
+
+RUST_PROFILE = 'release'
+RUST_LIB = 'trezor_lib'
+RUST_LIBDIR = f'build/unix/rust/{RUST_PROFILE}'
+RUST_LIBPATH = f'{RUST_LIBDIR}/lib{RUST_LIB}.a'
+
+def cargo_build():
+    # Determine the profile build flags.
+    if RUST_PROFILE == 'release':
+        profile = '--release'
+    else:
+        profile = ''
+    features = []
+    if BITCOIN_ONLY == "1":
+        features.append("bitcoin_only")
+
+    return f'cd embed/rust; cargo build {profile} --target-dir=../../build/unix/rust --features "{" ".join(features)}"'
+
+rust = env.Command(
+    target=RUST_LIBPATH,
+    source='',
+    action=cargo_build(), )
+env.Depends(rust, protobuf_blobs)
+
+
+env.Append(LINKFLAGS=f'-L{RUST_LIBDIR}')
+env.Append(LINKFLAGS=f'-l{RUST_LIB}')
+
+#
 # Program objects
 #
 
@@ -588,3 +670,5 @@ program = env.Command(
     target='trezor-emu-core',
     source=obj_program,
     action='$CC -o $TARGET $SOURCES $_LIBDIRFLAGS $_LIBFLAGS $LINKFLAGS', )
+
+env.Depends(program, rust)
