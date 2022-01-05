@@ -6,4 +6,5 @@ Firmware currently running on Model One. If you are working on a new feature, yo
 
 See [`docs/legacy`](../docs/legacy/index.md) for more info.
 
+Board Top
 ![top_pcb](T1_16MHz.gif "Board")
